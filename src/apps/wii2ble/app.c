@@ -119,8 +119,17 @@ void app_init(void)
     button_init();
     button_set_callback(on_button_event);
 
-    // Initialize Wii extension I2C host
-    wii_host_init_pins(WII_PIN_SDA, WII_PIN_SCL);
+    // Initialize Wii extension I2C host (dual-port when second pins are defined).
+    // Each port gets its own I2C bus (bus 0 / bus 1); all Wii accessories share
+    // address 0x52 so they cannot share a bus.
+#if defined(WII_PIN_SDA2) && WII_PIN_SDA2 != 255
+    wii_host_init_dual_detected(WII_PIN_SDA,  WII_PIN_SCL,  WII_DETECT_GPIO,
+                                WII_PIN_SDA2, WII_PIN_SCL2, WII_DETECT_GPIO2);
+    printf("[app:wii2ble]   Player 2: SDA=%d SCL=%d detect=%d\n",
+           WII_PIN_SDA2, WII_PIN_SCL2, WII_DETECT_GPIO2);
+#else
+    wii_host_init_pins_detected(WII_PIN_SDA, WII_PIN_SCL, WII_DETECT_GPIO);
+#endif
 
     // Configure router: broadcast Wii input to both USB and BLE outputs
     router_config_t router_cfg = {
@@ -128,7 +137,7 @@ void app_init(void)
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
             [OUTPUT_TARGET_USB_DEVICE]     = USB_OUTPUT_PORTS,
-            [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
+            [OUTPUT_TARGET_BLE_PERIPHERAL] = MAX_PLAYER_SLOTS,
         },
         .merge_all_inputs = false,
         .transform_flags = TRANSFORM_NONE,

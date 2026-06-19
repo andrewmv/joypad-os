@@ -34,9 +34,9 @@ bool wii_host_is_connected(void);
 // Exposed as int to keep this header free of the lib's internal enum.
 int  wii_host_get_ext_type(void);
 
-// Dual-port support: add a second I2C bus for a second extension.
-// When two nunchucks are detected, the second is merged as right stick + B3/B4.
-// Requires separate I2C bus (all extensions share address 0x52).
+// Dual-port support: two independent I2C buses, one controller each.
+// All Wii extension accessories share slave address 0x52, so each port
+// must be on its own bus.
 #ifndef WII_PIN_SDA2
 #define WII_PIN_SDA2  255  // disabled by default
 #endif
@@ -45,6 +45,15 @@ int  wii_host_get_ext_type(void);
 #endif
 
 void wii_host_init_dual(uint8_t sda1, uint8_t scl1, uint8_t sda2, uint8_t scl2);
+
+// Presence-detect variants: detect_gpio is driven high by the accessory's
+// VCC pin via the socket; a board pull-down makes it low when the socket is
+// empty.  Use WII_DETECT_NONE (255) when the pin is not wired.
+#define WII_DETECT_NONE 255
+
+void wii_host_init_pins_detected(uint8_t sda, uint8_t scl, uint8_t detect);
+void wii_host_init_dual_detected(uint8_t sda1, uint8_t scl1, uint8_t det1,
+                                 uint8_t sda2, uint8_t scl2, uint8_t det2);
 
 extern const InputInterface wii_input_interface;
 

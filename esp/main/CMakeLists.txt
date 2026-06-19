@@ -226,6 +226,7 @@ elseif(CONFIG_APP STREQUAL "wii2ble")
         "${SHARED_SRC}/lib/wii_ext/ext_udraw.c"
         "${SHARED_SRC}/lib/wii_ext/ext_motionplus.c"
         "${SHARED_SRC}/platform/esp32/platform_i2c_esp32.c"
+        "platform_gpio_esp32.c"
 
         # --- BLE output (peripheral / HOGP mode) ---
         "${SHARED_SRC}/bt/ble_output/ble_output.c"

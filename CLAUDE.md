@@ -2,6 +2,70 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## Fork Notes (andrewmv/joypad-os)
+
+This is a personal fork. Changes relative to upstream:
+
+### Added: `wii2ble` app — Wii extension → USB HID + BLE HID on ESP32-S3
+
+Routes a SNES Classic (or any Wii extension accessory) over I2C to two simultaneous outputs via `ROUTING_MODE_BROADCAST`:
+- **USB HID** — wired gamepad via ESP32-S3 native USB OTG
+- **BLE HID** — wireless HOGP peripheral (pairs like a Bluetooth gamepad)
+
+**Build:**
+```bash
+cd esp
+
+# First time only — installs ESP-IDF v6 and S3 toolchain:
+make init
+
+# Build:
+make BOARD=devkitc1_esp32s3 CONFIG_APP=wii2ble build
+
+# Flash (hardware required):
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+**BOOT button behaviour:**
+- Single click — cycle USB output mode (HID → XInput → SInput → …)
+- Double click — cycle BLE output mode (Standard ↔ Xbox BLE)
+- Hold — clear BLE bonds and restart advertising
+
+**I2C pin defaults** (`src/apps/wii2ble/app.h`): SDA=GPIO1, SCL=GPIO2 at 50 kHz (conservative for clone controllers). Change for your PCB.
+
+**New files:**
+- `src/apps/wii2ble/` — app wiring, button handler, BLE init
+- `esp/sdkconfig.board.devkitc1_esp32s3` — 8MB flash, TinyUF2 partitions, GPIO48 NeoPixel
+
+### Ported: Wii extension host driver to ESP32
+
+`src/native/host/wii_ext/wii_ext_host.c` previously used RP2040-only APIs:
+- Replaced `pico/time.h` / `busy_wait_us` / `time_us_32` with `platform_sleep_us` / `platform_time_us`
+- Replaced hardcoded RP2040 pin→I2C-bus mapping with `#ifdef PICO_SDK_VERSION_MAJOR` guard; defaults to bus 0 on ESP32
+
+### Fixed: I2C HAL ignores `freq_hz`
+
+`src/platform/esp32/platform_i2c_esp32.c` was hardcoding 400 kHz for all devices. Now uses `config->freq_hz` (falls back to 400 kHz if zero).
+
+### Upstream bug fixes (suitable for upstream PRs)
+
+| File | Fix |
+|---|---|
+| `src/core/app_registry.c` | Missing `OUTPUT_TARGET_AMIGA` case in switch |
+| `src/lib/libxsm3/excrypt.h` | Parenthesise `SWAP16/32/64` macros (`-Werror=parentheses`) |
+| `src/bt/transport/bt_transport_esp32.c` | `memcpy` replaces `strncpy` (`-Werror=stringop-truncation`) |
+| `esp/Makefile` | `SHELL := /bin/bash` — build was failing under dash (`source` is bash-only) |
+
+### ESP-IDF v6 gotchas
+
+- **Stale sdkconfig**: `idf.py fullclean` (aka `make clean`) deletes `build/` but NOT `esp/sdkconfig`. If you switch targets (e.g. from a C6 experiment back to S3), delete `esp/sdkconfig` manually before rebuilding.
+- **SOC register headers**: `soc/rtc_cntl_reg.h`, `soc/usb_wrap_struct.h` etc. moved to a `register/` subdirectory in ESP-IDF v6. They ARE available to the `main` component when the correct sdkconfig/target is active — the symptom of them not being found is almost always a stale C6 sdkconfig causing the wrong toolchain to be used.
+- **`esp32s3/rom/usb/chip_usb_dw_wrapper.h`**: provides `chip_usb_set_persist_flags`, which is a ROM function. Only available/needed for the TinyUF2 double-tap bootloader feature on S3.
+
+---
+
 ## Project Overview
 
 Joypad OS (formerly **USBRetro**) is firmware for RP2040 and ESP32-S3 based adapters that provides universal controller I/O. Old code/commits may reference `USBR_BUTTON_*` or `usbretro` naming.

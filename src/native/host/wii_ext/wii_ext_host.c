@@ -8,8 +8,12 @@
 #include "core/services/leds/leds.h"
 #include "core/services/profiles/profile.h"
 #include "platform/platform_i2c.h"
+#include "platform/platform_gpio.h"
 #include "platform/platform.h"
 #include <stdio.h>
+
+// Sentinel meaning "no presence-detect GPIO wired for this port".
+#define WII_DETECT_NONE 255
 #include <string.h>
 
 // Device address range for native inputs. SNES/LodgeNet use 0xF0+, N64/3DO
@@ -34,16 +38,17 @@ typedef struct {
     uint32_t         last_poll_us;
     uint32_t         last_retry_us;
     bool             prev_connected;
+    // Per-port change detection
+    uint32_t         prev_buttons;
+    uint64_t         prev_analog;
+    // Optional presence-detect GPIO (WII_DETECT_NONE = not wired)
+    uint8_t          detect_gpio;
 } wii_port_t;
 
 #define WII_MAX_PORTS 2
 
 static wii_port_t ports[WII_MAX_PORTS];
 static uint8_t    num_ports = 0;
-
-// Merged output state (tracks change detection for the combined event).
-static uint32_t         prev_buttons = 0;
-static uint64_t         prev_analog  = 0;
 
 // Profile-cycle hotkey state: MINUS + DU/DD held ≥ 2s triggers cycle.
 #define WII_HOTKEY_HOLD_US   2000000
@@ -319,32 +324,34 @@ static void map_classic(const wii_ext_state_t *s, input_event_t *ev) {
 
 // ---- Port init helper -------------------------------------------------------
 
-static bool init_port(wii_port_t *p, uint8_t sda, uint8_t scl) {
-    p->pin_sda = sda;
-    p->pin_scl = scl;
-
-    // RP2040: I2C bus is determined by the SDA pin number (hardware constraint).
-    // On all other platforms (ESP32, nRF, etc.) the GPIO matrix is flexible,
-    // so default to bus 0 and let the caller use wii_host_init_pins() to
-    // pick whichever GPIOs are wired on their board.
-#if defined(PICO_SDK_VERSION_MAJOR)
-    uint8_t bus_idx = (sda == 12 || sda == 16 || sda == 20 || sda == 0
-                       || sda == 4 || sda == 8) ? 0 : 1;
-#else
-    uint8_t bus_idx = 0;
-#endif
+// bus:         I2C bus index (0 or 1). Caller is responsible for assigning
+//              distinct buses to each port; all extensions share address 0x52.
+// detect_gpio: GPIO driven high by the accessory presence pin (WII_DETECT_NONE
+//              if the board does not wire a detect pin for this port).
+static bool init_port(wii_port_t *p, uint8_t sda, uint8_t scl,
+                      uint8_t bus, uint8_t detect_gpio)
+{
+    p->pin_sda     = sda;
+    p->pin_scl     = scl;
+    p->detect_gpio = detect_gpio;
 
     platform_i2c_config_t cfg = {
-        .bus     = bus_idx,
+        .bus     = bus,
         .sda_pin = sda,
         .scl_pin = scl,
         .freq_hz = WII_I2C_FREQ_HZ,
     };
     p->bus = platform_i2c_init(&cfg);
     if (!p->bus) {
-        printf("[wii_host] ERROR: platform_i2c_init failed (SDA=%d SCL=%d)\n",
-               sda, scl);
+        printf("[wii_host] ERROR: platform_i2c_init failed (SDA=%d SCL=%d bus=%d)\n",
+               sda, scl, bus);
         return false;
+    }
+
+    if (detect_gpio != WII_DETECT_NONE) {
+        platform_gpio_init_input(detect_gpio, false);  // false = pull-down
+        printf("[wii_host] port (bus %d): presence detect on GPIO%d\n",
+               bus, detect_gpio);
     }
 
     p->transport.write    = io_write;
@@ -357,9 +364,11 @@ static bool init_port(wii_port_t *p, uint8_t sda, uint8_t scl) {
     p->last_poll_us    = 0;
     p->last_retry_us   = 0;
     p->prev_connected  = false;
+    p->prev_buttons    = 0;
+    p->prev_analog     = 0;
 
     printf("[wii_host] port ready SDA=%d SCL=%d @ %uHz (bus %d)\n",
-           sda, scl, (unsigned)WII_I2C_FREQ_HZ, cfg.bus);
+           sda, scl, (unsigned)WII_I2C_FREQ_HZ, bus);
     return true;
 }
 
@@ -371,28 +380,34 @@ void wii_host_init(void) {
 }
 
 void wii_host_init_pins(uint8_t sda, uint8_t scl) {
+    wii_host_init_pins_detected(sda, scl, WII_DETECT_NONE);
+}
+
+void wii_host_init_pins_detected(uint8_t sda, uint8_t scl, uint8_t detect) {
     if (num_ports > 0) return;
     memset(ports, 0, sizeof(ports));
-    prev_buttons = 0;
-    prev_analog  = 0;
 
-    if (init_port(&ports[0], sda, scl)) {
+    if (init_port(&ports[0], sda, scl, 0, detect)) {
         num_ports = 1;
     }
 }
 
 void wii_host_init_dual(uint8_t sda1, uint8_t scl1, uint8_t sda2, uint8_t scl2) {
+    wii_host_init_dual_detected(sda1, scl1, WII_DETECT_NONE,
+                                sda2, scl2, WII_DETECT_NONE);
+}
+
+void wii_host_init_dual_detected(uint8_t sda1, uint8_t scl1, uint8_t det1,
+                                 uint8_t sda2, uint8_t scl2, uint8_t det2) {
     if (num_ports > 0) return;
     memset(ports, 0, sizeof(ports));
-    prev_buttons = 0;
-    prev_analog  = 0;
 
-    if (init_port(&ports[0], sda1, scl1)) {
+    if (init_port(&ports[0], sda1, scl1, 0, det1)) {
         num_ports = 1;
     }
-    if (init_port(&ports[1], sda2, scl2)) {
+    if (init_port(&ports[1], sda2, scl2, 1, det2)) {
         num_ports = 2;
-        printf("[wii_host] dual-port mode: second nunchuck maps to right stick + B3/B4\n");
+        printf("[wii_host] dual-port mode: two independent controllers (P1/P2)\n");
     }
 }
 
@@ -402,6 +417,19 @@ void wii_host_init_dual(uint8_t sda1, uint8_t scl1, uint8_t sda2, uint8_t scl2) 
 // Returns true if state was read successfully into *out.
 static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
     if (!p->initialized) return false;
+
+    // Fast path: if a presence-detect GPIO is wired and reads low, the socket
+    // is empty. Clean up immediately rather than waiting for the I2C timeout.
+    if (p->detect_gpio != WII_DETECT_NONE && !platform_gpio_get(p->detect_gpio)) {
+        if (p->ext.ready || p->prev_connected) {
+            printf("[wii_host] port %d: removed (detect pin low)\n", port_index);
+            wii_ext_mark_disconnected(&p->ext);
+            p->prev_connected = false;
+            p->last_retry_us  = 0;
+            if (port_index == 0) leds_set_color(0, 0, 0);
+        }
+        return false;
+    }
 
     uint32_t now = platform_time_us();
 
@@ -455,24 +483,11 @@ static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
     return true;
 }
 
-// Map second nunchuck to right stick + B2/B4.
-// Dual layout: left Z=B1, left C=B3, right Z=B2, right C=B4
-static void map_nunchuck_right(const wii_ext_state_t *s, input_event_t *ev) {
-    if (s->buttons & WII_BTN_Z) ev->buttons |= JP_BUTTON_B2;
-    if (s->buttons & WII_BTN_C) ev->buttons |= JP_BUTTON_B4;
-
-    uint8_t raw_x = (uint8_t)(s->analog[WII_AXIS_LX] >> 2);
-    uint8_t raw_y = (uint8_t)(255 - (s->analog[WII_AXIS_LY] >> 2));
-    ev->analog[ANALOG_RX] = wii_stick_scale(raw_x, 1, 2);
-    ev->analog[ANALOG_RY] = wii_stick_scale(raw_y, 1, 3);
-}
-
 // ---- Main task --------------------------------------------------------------
 
 void wii_host_task(void) {
     if (num_ports == 0) return;
 
-    // Poll all ports.
     wii_ext_state_t states[WII_MAX_PORTS];
     bool            valid[WII_MAX_PORTS] = {false};
 
@@ -480,17 +495,13 @@ void wii_host_task(void) {
         valid[i] = poll_port(&ports[i], i, &states[i]);
     }
 
-    // Need at least port 0 to have data.
-    if (!valid[0]) return;
-
     uint32_t now = platform_time_us();
 
     // ------------------------------------------------------------------
-    // Profile-cycle hotkey: MINUS (S1) + D-pad Up/Down held ≥ 2 s.
+    // Profile-cycle hotkey on port 0: MINUS + D-pad Up/Down held ≥ 2 s.
     // Only meaningful on accessories with a MINUS + D-pad (Classic/Pro).
-    // Nunchuck has neither so this block no-ops for it.
     // ------------------------------------------------------------------
-    {
+    if (valid[0]) {
         const uint32_t trigger_up   = WII_BTN_MINUS | WII_BTN_DU;
         const uint32_t trigger_down = WII_BTN_MINUS | WII_BTN_DD;
         uint32_t held = 0;
@@ -523,54 +534,46 @@ void wii_host_task(void) {
         }
     }
 
-    // Build the merged input event from port 0.
-    input_event_t ev;
-    init_input_event(&ev);
-    ev.dev_addr  = WII_DEV_ADDR_BASE;
-    ev.instance  = 0;
-    ev.type      = INPUT_TYPE_GAMEPAD;
-    ev.transport = INPUT_TRANSPORT_NATIVE;
+    // Submit an independent input event per connected port.
+    // Each port gets a unique dev_addr so the router/player-manager treats
+    // them as separate players (P1 = WII_DEV_ADDR_BASE, P2 = +1, …).
+    for (uint8_t i = 0; i < num_ports; i++) {
+        if (!valid[i]) continue;
 
-    switch (states[0].type) {
-        case WII_EXT_TYPE_NUNCHUCK:    map_nunchuck(&states[0], &ev);   break;
-        case WII_EXT_TYPE_CLASSIC:
-        case WII_EXT_TYPE_CLASSIC_PRO: map_classic(&states[0], &ev);    break;
-        case WII_EXT_TYPE_GUITAR:      map_guitar(&states[0], &ev);     break;
-        case WII_EXT_TYPE_DRUMS:       map_drums(&states[0], &ev);      break;
-        case WII_EXT_TYPE_TURNTABLE:   map_turntable(&states[0], &ev);  break;
-        case WII_EXT_TYPE_TAIKO:       map_taiko(&states[0], &ev);      break;
-        case WII_EXT_TYPE_UDRAW:       map_udraw(&states[0], &ev);      break;
-        case WII_EXT_TYPE_MOTIONPLUS:  map_motionplus(&states[0], &ev); break;
-        default: return;
+        input_event_t ev;
+        init_input_event(&ev);
+        ev.dev_addr  = WII_DEV_ADDR_BASE + i;
+        ev.instance  = 0;
+        ev.type      = INPUT_TYPE_GAMEPAD;
+        ev.transport = INPUT_TRANSPORT_NATIVE;
+
+        switch (states[i].type) {
+            case WII_EXT_TYPE_NUNCHUCK:    map_nunchuck(&states[i], &ev);   break;
+            case WII_EXT_TYPE_CLASSIC:
+            case WII_EXT_TYPE_CLASSIC_PRO: map_classic(&states[i], &ev);    break;
+            case WII_EXT_TYPE_GUITAR:      map_guitar(&states[i], &ev);     break;
+            case WII_EXT_TYPE_DRUMS:       map_drums(&states[i], &ev);      break;
+            case WII_EXT_TYPE_TURNTABLE:   map_turntable(&states[i], &ev);  break;
+            case WII_EXT_TYPE_TAIKO:       map_taiko(&states[i], &ev);      break;
+            case WII_EXT_TYPE_UDRAW:       map_udraw(&states[i], &ev);      break;
+            case WII_EXT_TYPE_MOTIONPLUS:  map_motionplus(&states[i], &ev); break;
+            default: continue;
+        }
+
+        uint64_t analog_sig =
+              ((uint64_t)ev.analog[ANALOG_LX] <<  0)
+            | ((uint64_t)ev.analog[ANALOG_LY] <<  8)
+            | ((uint64_t)ev.analog[ANALOG_RX] << 16)
+            | ((uint64_t)ev.analog[ANALOG_RY] << 24)
+            | ((uint64_t)ev.analog[ANALOG_L2] << 32)
+            | ((uint64_t)ev.analog[ANALOG_R2] << 40);
+
+        if (ev.buttons == ports[i].prev_buttons && analog_sig == ports[i].prev_analog) continue;
+        ports[i].prev_buttons = ev.buttons;
+        ports[i].prev_analog  = analog_sig;
+
+        router_submit_input(&ev);
     }
-
-    // Merge second port if it's a nunchuck (dual-nunchuck mode).
-    // Dual layout: left Z=B1, left C=B3, right Z=B2, right C=B4
-    if (valid[1] && states[1].type == WII_EXT_TYPE_NUNCHUCK
-                 && states[0].type == WII_EXT_TYPE_NUNCHUCK) {
-        // Remap left nunchuck from single layout (C=B1, Z=B2)
-        // to dual layout (Z=B1, C=B3)
-        ev.buttons = 0;
-        if (states[0].buttons & WII_BTN_Z) ev.buttons |= JP_BUTTON_B1;
-        if (states[0].buttons & WII_BTN_C) ev.buttons |= JP_BUTTON_B3;
-
-        map_nunchuck_right(&states[1], &ev);
-        ev.layout = LAYOUT_WII_DUAL_NUNCHUCK;
-        ev.button_count = 4;
-    }
-
-    uint64_t analog_sig =
-          ((uint64_t)ev.analog[ANALOG_LX] <<  0)
-        | ((uint64_t)ev.analog[ANALOG_LY] <<  8)
-        | ((uint64_t)ev.analog[ANALOG_RX] << 16)
-        | ((uint64_t)ev.analog[ANALOG_RY] << 24)
-        | ((uint64_t)ev.analog[ANALOG_L2] << 32)
-        | ((uint64_t)ev.analog[ANALOG_R2] << 40);
-    if (ev.buttons == prev_buttons && analog_sig == prev_analog) return;
-    prev_buttons = ev.buttons;
-    prev_analog  = analog_sig;
-
-    router_submit_input(&ev);
 }
 
 bool wii_host_is_connected(void) {

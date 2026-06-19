@@ -31,10 +31,10 @@
 // CORE FEATURES
 // ============================================================================
 #define REQUIRE_NATIVE_WII_HOST 1
-#define WII_MAX_CONTROLLERS     1
+#define WII_MAX_CONTROLLERS     2
 
 #define REQUIRE_USB_DEVICE      1
-#define USB_OUTPUT_PORTS        1
+#define USB_OUTPUT_PORTS        2
 
 #define REQUIRE_BLE_OUTPUT      1
 #define REQUIRE_PLAYER_MANAGEMENT 1
@@ -44,8 +44,19 @@
 // ============================================================================
 // Defaults for ESP32-S3-DevKitC-1 — change to match your PCB layout.
 // Any GPIO pair works on ESP32-S3 (flexible GPIO matrix).
+//
+// Player 1 controller (I2C bus 0):
 #define WII_PIN_SDA     1
 #define WII_PIN_SCL     2
+// Player 2 controller (I2C bus 1). Set WII_PIN_SDA2 to 255 to disable.
+#define WII_PIN_SDA2    3
+#define WII_PIN_SCL2    4
+
+// Presence-detect GPIO for each socket (255 = pin not wired on this board).
+// Connect the socket's VCC/detect pin through a pull-down resistor to a GPIO;
+// the firmware reads high = controller inserted, low = socket empty.
+#define WII_DETECT_GPIO   255
+#define WII_DETECT_GPIO2  255
 
 // I2C clock. Clone controllers are unreliable above ~100 kHz; 50 kHz is a
 // conservative default. Increase to 400000 if your specific hardware allows.
@@ -61,7 +72,7 @@
 // PLAYER MANAGEMENT
 // ============================================================================
 #define PLAYER_SLOT_MODE     PLAYER_SLOT_FIXED
-#define MAX_PLAYER_SLOTS     1
+#define MAX_PLAYER_SLOTS     2
 #define AUTO_ASSIGN_ON_PRESS 1
 
 // ============================================================================
