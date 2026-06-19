@@ -35,4 +35,10 @@ int platform_i2c_write_read(platform_i2c_t bus, uint8_t addr,
                             const uint8_t* wr, size_t wr_len,
                             uint8_t* rd, size_t rd_len);
 
+// Set a per-device I2C clock frequency, overriding the bus default.
+// Useful when devices on the same bus need different speeds (e.g. a 400kHz
+// display sharing a bus with a 50kHz Wii controller).
+// Must be called after platform_i2c_init(). Returns 0 on success, -1 on error.
+int platform_i2c_set_device_freq(platform_i2c_t bus, uint8_t addr, uint32_t freq_hz);
+
 #endif // PLATFORM_I2C_H

@@ -580,6 +580,10 @@ bool wii_host_is_connected(void) {
     return num_ports > 0 && ports[0].initialized && ports[0].ext.ready;
 }
 
+bool wii_host_port_is_connected(uint8_t port) {
+    return port < num_ports && ports[port].initialized && ports[port].ext.ready;
+}
+
 int wii_host_get_ext_type(void) {
     return num_ports > 0 ? (int)ports[0].ext.type : 0;
 }

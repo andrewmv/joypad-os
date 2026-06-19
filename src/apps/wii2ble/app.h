@@ -46,17 +46,22 @@
 // Any GPIO pair works on ESP32-S3 (flexible GPIO matrix).
 //
 // Player 1 controller (I2C bus 0):
-#define WII_PIN_SDA     1
-#define WII_PIN_SCL     2
+#define WII_PIN_SDA     10
+#define WII_PIN_SCL     9
 // Player 2 controller (I2C bus 1). Set WII_PIN_SDA2 to 255 to disable.
-#define WII_PIN_SDA2    3
-#define WII_PIN_SCL2    4
+#define WII_PIN_SDA2    12
+#define WII_PIN_SCL2    11
+
+// OLED status display (SH1106 128x64, I2C).
+// Shares the P2 bus (OLED_I2C_BUS=1 set in CMakeLists).
+// Set WII_DISPLAY_ADDR to 255 to disable at runtime even when OLED_I2C_DISPLAY=1.
+#define WII_DISPLAY_ADDR  0x3C   // 7-bit; 8-bit write address is 0x78
 
 // Presence-detect GPIO for each socket (255 = pin not wired on this board).
 // Connect the socket's VCC/detect pin through a pull-down resistor to a GPIO;
 // the firmware reads high = controller inserted, low = socket empty.
-#define WII_DETECT_GPIO   255
-#define WII_DETECT_GPIO2  255
+#define WII_DETECT_GPIO   13
+#define WII_DETECT_GPIO2  14
 
 // I2C clock. Clone controllers are unreliable above ~100 kHz; 50 kHz is a
 // conservative default. Increase to 400000 if your specific hardware allows.

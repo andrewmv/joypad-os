@@ -29,6 +29,7 @@ void wii_host_init(void);
 void wii_host_init_pins(uint8_t sda, uint8_t scl);
 void wii_host_task(void);
 bool wii_host_is_connected(void);
+bool wii_host_port_is_connected(uint8_t port);
 
 // Current extension type as a raw wii_ext_type_t value (0 = none).
 // Exposed as int to keep this header free of the lib's internal enum.

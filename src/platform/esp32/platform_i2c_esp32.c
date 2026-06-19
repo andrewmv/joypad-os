@@ -14,7 +14,8 @@ static const char* TAG = "i2c_esp32";
 
 // Per-device handle cache (seesaw + future devices)
 typedef struct {
-    uint8_t addr;
+    uint8_t  addr;
+    uint32_t freq_hz;  // Device-specific clock override (0 = use bus->freq_hz)
     i2c_master_dev_handle_t handle;
 } device_entry_t;
 
@@ -124,4 +125,57 @@ int platform_i2c_write_read(platform_i2c_t bus, uint8_t addr,
 
     esp_err_t err = i2c_master_transmit_receive(dev, wr, wr_len, rd, rd_len, 100);
     return (err == ESP_OK) ? 0 : -1;
+}
+
+int platform_i2c_set_device_freq(platform_i2c_t bus, uint8_t addr, uint32_t freq_hz)
+{
+    if (!bus || !bus->initialized || !freq_hz) return -1;
+
+    // Check if device already registered — re-create handle at new frequency
+    for (int i = 0; i < bus->device_count; i++) {
+        if (bus->devices[i].addr == addr) {
+            if (bus->devices[i].freq_hz == freq_hz) return 0;  // Already correct
+            i2c_master_bus_rm_device(bus->devices[i].handle);
+            i2c_device_config_t dev_cfg = {
+                .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+                .device_address  = addr,
+                .scl_speed_hz    = freq_hz,
+            };
+            esp_err_t err = i2c_master_bus_add_device(bus->bus_handle, &dev_cfg,
+                                                       &bus->devices[i].handle);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "set_device_freq re-add 0x%02X failed: %s",
+                         addr, esp_err_to_name(err));
+                bus->devices[i].handle = NULL;
+                return -1;
+            }
+            bus->devices[i].freq_hz = freq_hz;
+            ESP_LOGI(TAG, "Device 0x%02X speed set to %luHz", addr, (unsigned long)freq_hz);
+            return 0;
+        }
+    }
+
+    // Device not yet cached — pre-register it at the requested frequency
+    if (bus->device_count >= MAX_DEVICES_PER_BUS) {
+        ESP_LOGE(TAG, "Too many I2C devices on bus (set_device_freq)");
+        return -1;
+    }
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = addr,
+        .scl_speed_hz    = freq_hz,
+    };
+    i2c_master_dev_handle_t dev_handle = NULL;
+    esp_err_t err = i2c_master_bus_add_device(bus->bus_handle, &dev_cfg, &dev_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "set_device_freq add 0x%02X failed: %s",
+                 addr, esp_err_to_name(err));
+        return -1;
+    }
+    bus->devices[bus->device_count].addr    = addr;
+    bus->devices[bus->device_count].freq_hz = freq_hz;
+    bus->devices[bus->device_count].handle  = dev_handle;
+    bus->device_count++;
+    ESP_LOGI(TAG, "Device 0x%02X pre-registered at %luHz", addr, (unsigned long)freq_hz);
+    return 0;
 }

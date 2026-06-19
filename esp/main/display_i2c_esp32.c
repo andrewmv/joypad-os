@@ -10,6 +10,18 @@
 #include "core/services/display/display_transport.h"
 #include "platform/platform_i2c.h"
 
+// Bus and pin selection — overridable at compile time via CMake defines.
+// Defaults match the Adafruit Feather ESP32-S3 FeatherWing wiring.
+#ifndef OLED_I2C_BUS
+#define OLED_I2C_BUS 0
+#endif
+#ifndef OLED_I2C_SDA
+#define OLED_I2C_SDA 3
+#endif
+#ifndef OLED_I2C_SCL
+#define OLED_I2C_SCL 4
+#endif
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -65,17 +77,14 @@ static void display_start_task(void)
 // TRANSPORT INIT
 // ============================================================================
 
-// Feather ESP32-S3 I2C pins
-#define I2C_SDA_PIN  3
-#define I2C_SCL_PIN  4
-
 bool display_i2c_init(const display_i2c_config_t* config)
 {
-    // Initialize I2C bus via platform HAL
+    // Initialize I2C bus via platform HAL (idempotent — safe to call on a
+    // bus already owned by another driver, e.g. the Wii extension host).
     platform_i2c_config_t i2c_cfg = {
-        .bus = 0,
-        .sda_pin = I2C_SDA_PIN,
-        .scl_pin = I2C_SCL_PIN,
+        .bus     = OLED_I2C_BUS,
+        .sda_pin = OLED_I2C_SDA,
+        .scl_pin = OLED_I2C_SCL,
         .freq_hz = 400000,
     };
     i2c_bus = platform_i2c_init(&i2c_cfg);
@@ -83,6 +92,11 @@ bool display_i2c_init(const display_i2c_config_t* config)
         printf("[display] I2C bus init failed\n");
         return false;
     }
+
+    // Pin the display device at 400 kHz regardless of the bus default.
+    // The HAL supports per-device speeds, so this does not affect other
+    // devices (e.g. a Wii controller at 50 kHz) sharing the bus.
+    platform_i2c_set_device_freq(i2c_bus, config->addr, 400000);
 
     // Probe: check if a display is actually connected at this address
     uint8_t probe = 0x00;
@@ -102,6 +116,7 @@ bool display_i2c_init(const display_i2c_config_t* config)
     // Start background task for async I2C flush
     display_start_task();
 
-    printf("[display] I2C transport initialized (addr=0x%02X)\n", i2c_addr);
+    printf("[display] I2C transport initialized (addr=0x%02X, bus=%d, 400kHz)\n",
+           i2c_addr, OLED_I2C_BUS);
     return true;
 }

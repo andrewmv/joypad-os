@@ -322,6 +322,44 @@ void display_init_ssd1306_i2c(const display_i2c_config_t* config) {
     printf("[display] Initialized SSD1306 128x64 OLED (I2C)\n");
 }
 
+void display_init_sh1106_i2c(const display_i2c_config_t* config) {
+    // Transport init — sets up I2C bus, probes device, registers callbacks.
+    // Sets col_offset=0; we override to 2 below.
+    if (!display_i2c_init(config)) return;
+    rotated_panel = false;        // SH1106 is natively 128×64; no rotation
+    display_set_col_offset(2);    // SH1106 internal RAM is 132 cols; offset 2
+
+    // SH1106 init sequence (identical to SPI path in display_init())
+    write_cmd(SH110X_DISPLAY_OFF);
+    write_cmd(SH110X_SET_DISPLAY_CLOCK);
+    write_cmd(0x80);
+    write_cmd(SH110X_SET_MULTIPLEX);
+    write_cmd(0x3F);              // 64 MUX lines
+    write_cmd(SH110X_SET_DISPLAY_OFFSET);
+    write_cmd(0x00);
+    write_cmd(SH110X_SET_START_LINE | 0x00);
+    write_cmd(SH110X_CHARGE_PUMP);
+    write_cmd(0x14);              // Enable charge pump
+    write_cmd(SH110X_SEG_REMAP | 0x01);  // Flip horizontally
+    write_cmd(SH110X_COM_SCAN_DEC);      // Flip vertically
+    write_cmd(SH110X_SET_COM_PINS);
+    write_cmd(0x12);
+    write_cmd(SH110X_SET_CONTRAST);
+    write_cmd(0xCF);
+    write_cmd(SH110X_SET_PRECHARGE);
+    write_cmd(0xF1);
+    write_cmd(SH110X_SET_VCOM_DETECT);
+    write_cmd(0x40);
+    write_cmd(SH110X_DISPLAY_ALL_ON_RESUME);
+    write_cmd(SH110X_NORMAL_DISPLAY);
+    write_cmd(SH110X_DISPLAY_ON);
+
+    display_clear();
+    display_update();
+    initialized = true;
+    printf("[display] Initialized SH1106 128x64 OLED (I2C)\n");
+}
+
 bool display_is_initialized(void) {
     return initialized;
 }

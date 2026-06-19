@@ -18,7 +18,12 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "native/host/wii_ext/wii_ext_host.h"
+#include "core/input_event.h"
+#include "core/buttons.h"
 #include "usb/usbd/usbd.h"
+#ifdef OLED_I2C_DISPLAY
+#include "core/services/display/display.h"
+#endif
 #include "bt/ble_output/ble_output.h"
 #include "bt/transport/bt_transport.h"
 #include "platform/platform.h"
@@ -160,6 +165,20 @@ void app_init(void)
     };
     profile_init(&profile_cfg);
 
+#ifdef OLED_I2C_DISPLAY
+    {
+        display_i2c_config_t disp_cfg = { .addr = WII_DISPLAY_ADDR };
+        display_init_sh1106_i2c(&disp_cfg);
+        if (display_is_initialized()) {
+            printf("[app:wii2ble]   OLED: SH1106 ready (bus %d, addr 0x%02X, 400kHz)\n",
+                   OLED_I2C_BUS, WII_DISPLAY_ADDR);
+        } else {
+            printf("[app:wii2ble]   OLED: no display at 0x%02X (disabled)\n",
+                   WII_DISPLAY_ADDR);
+        }
+    }
+#endif
+
     // Initialize BLE output (loads mode from flash before BTstack starts)
     ble_output_init();
 
@@ -170,6 +189,75 @@ void app_init(void)
     printf("[app:wii2ble] Initialization complete\n");
     printf("[app:wii2ble]   Routing: Wii extension → USB HID + BLE HID\n");
 }
+
+// ============================================================================
+// OLED STATUS RENDER
+// ============================================================================
+
+#ifdef OLED_I2C_DISPLAY
+// Button order for the controller row display
+static const uint32_t DISPLAY_BTN_MAP[] = {
+    JP_BUTTON_DU, JP_BUTTON_DD, JP_BUTTON_DL, JP_BUTTON_DR,
+    JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4,
+    JP_BUTTON_L1, JP_BUTTON_R1, JP_BUTTON_S1, JP_BUTTON_S2,
+};
+#define DISPLAY_BTN_COUNT  12
+#define DISPLAY_BTN_SIZE    7   // px (box width and height)
+#define DISPLAY_BTN_STRIDE  9   // px (box + 2px gap)
+#define DISPLAY_BTN_X0     14   // px (x position of first button)
+
+static void render_display(void)
+{
+    if (!display_is_initialized()) return;
+
+    display_clear();
+
+    // ---- Controller rows (P1 / P2) ----
+    // Each row: label + one 7×7 box per button (filled=pressed, outline=released)
+    for (uint8_t p = 0; p < 2; p++) {
+        uint8_t y = p * 11;
+        char label[4];
+        snprintf(label, sizeof(label), "P%u", p + 1u);
+        display_text(0, y, label);
+
+        if (!wii_host_port_is_connected(p)) {
+            display_text(DISPLAY_BTN_X0, y, "---");
+        } else {
+            const input_event_t *ev =
+                router_get_output(OUTPUT_TARGET_USB_DEVICE, p);
+            uint32_t btns = ev ? ev->buttons : 0;
+            for (int b = 0; b < DISPLAY_BTN_COUNT; b++) {
+                uint8_t bx = DISPLAY_BTN_X0 + b * DISPLAY_BTN_STRIDE;
+                bool pressed = (btns & DISPLAY_BTN_MAP[b]) != 0;
+                if (pressed) display_fill_rect(bx, y, DISPLAY_BTN_SIZE, DISPLAY_BTN_SIZE, true);
+                else         display_rect(bx, y, DISPLAY_BTN_SIZE, DISPLAY_BTN_SIZE);
+            }
+        }
+    }
+
+    // ---- Divider ----
+    display_hline(0, 23, DISPLAY_WIDTH);
+
+    // ---- BLE status ----
+    display_text(0, 26, "BLE:");
+    display_text(26, 26, ble_output_is_connected() ? "Paired      " : "Searching...");
+
+    // ---- USB status ----
+    display_text(0, 36, "USB:");
+    display_text(26, 36, tud_mounted() ? "HID" : "Disconnected");
+
+    // ---- Port presence indicators ----
+    display_text(0, 50, "P1");
+    if (wii_host_port_is_connected(0)) display_fill_rect(14, 50, 7, 7, true);
+    else                               display_rect(14, 50, 7, 7);
+
+    display_text(64, 50, "P2");
+    if (wii_host_port_is_connected(1)) display_fill_rect(78, 50, 7, 7, true);
+    else                               display_rect(78, 50, 7, 7);
+
+    display_update();
+}
+#endif // OLED_I2C_DISPLAY
 
 // ============================================================================
 // APP TASK
@@ -188,4 +276,13 @@ void app_task(void)
         leds_set_color(r, g, b);
         last_led_mode = mode;
     }
+
+#ifdef OLED_I2C_DISPLAY
+    static uint32_t last_display_ms = 0;
+    uint32_t now_ms = platform_time_ms();
+    if (now_ms - last_display_ms >= 100) {
+        render_display();
+        last_display_ms = now_ms;
+    }
+#endif
 }

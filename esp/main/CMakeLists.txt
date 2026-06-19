@@ -241,6 +241,10 @@ elseif(CONFIG_APP STREQUAL "wii2ble")
         "${SHARED_SRC}/bt/transport/bt_transport_esp32.c"
         # --- Battery monitor (required by ble_output on ESP32) ---
         "battery_esp32.c"
+
+        # --- OLED display (SH1106, shared on P2 I2C bus) ---
+        "display_i2c_esp32.c"
+        "${SHARED_SRC}/core/services/display/display.c"
     )
     set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/wii2ble")
     set(APP_NEEDS_BTSTACK ON)
@@ -595,6 +599,9 @@ elseif(CONFIG_APP STREQUAL "wii2ble")
         ENABLE_BTSTACK=1
         DISABLE_USB_HOST=1
         USBD_DEFAULT_MODE=1
+        OLED_I2C_DISPLAY=1
+        DISABLE_DISPLAY_SPI=1
+        OLED_I2C_BUS=1
     )
 elseif(APP_NEEDS_BTSTACK)
     target_compile_definitions(${COMPONENT_LIB} PUBLIC

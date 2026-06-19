@@ -42,6 +42,9 @@ void display_init_i2c(const display_i2c_config_t* config);
 // Initialize display over I2C (SSD1306)
 void display_init_ssd1306_i2c(const display_i2c_config_t* config);
 
+// Initialize display over I2C (SH1106, 128x64, col_offset=2)
+void display_init_sh1106_i2c(const display_i2c_config_t* config);
+
 // Clear display
 void display_clear(void);
 
