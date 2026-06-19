@@ -188,7 +188,7 @@ static const bt_connection_t* esp32_transport_get_connection(uint8_t index)
     // Update cached connection struct
     bt_connection_t* conn = &esp32_connections[index];
     memcpy(conn->bd_addr, info.bd_addr, 6);
-    strncpy(conn->name, info.name, BT_MAX_NAME_LEN - 1);
+    memcpy(conn->name, info.name, BT_MAX_NAME_LEN - 1);
     conn->name[BT_MAX_NAME_LEN - 1] = '\0';
     memcpy(conn->class_of_device, info.class_of_device, 3);
     conn->vendor_id = info.vendor_id;

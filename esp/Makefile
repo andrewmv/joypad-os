@@ -2,6 +2,8 @@
 # Board selection via BOARD variable (default: xiao_esp32s3)
 # App selection via CONFIG_APP variable (default: bt2usb)
 
+SHELL := /bin/bash
+
 .PHONY: init build flash monitor clean menuconfig help uf2
 
 # Default board and app
@@ -84,12 +86,20 @@ menuconfig:
 xiao_esp32s3:
 	@$(MAKE) BOARD=xiao_esp32s3 build
 
+devkitc1_esp32s3:
+	@$(MAKE) BOARD=devkitc1_esp32s3 build
+
 # Help
 help:
 	@echo "Joypad ESP32-S3 Build Commands:"
 	@echo ""
-	@echo "  make [BOARD=xiao_esp32s3]  - Build for specified board (default: xiao_esp32s3)"
-	@echo "  make xiao_esp32s3          - Build for Seeed XIAO ESP32-S3"
+	@echo "  make [BOARD=xiao_esp32s3]        - Build for specified board (default: xiao_esp32s3)"
+	@echo "  make xiao_esp32s3              - Build for Seeed XIAO ESP32-S3"
+	@echo "  make devkitc1_esp32s3          - Build for ESP32-S3-DevKitC-1"
+	@echo ""
+	@echo "App selection (CONFIG_APP=...):"
+	@echo "  wii2ble    - Wii extension → USB HID + BLE HID (this project)"
+	@echo "  bt2usb     - BLE controller → USB HID (default)"
 	@echo ""
 	@echo "  make flash [CONFIG_APP=...] - Build + flash via TinyUF2 (double-tap reset first)"
 	@echo "  make uf2 [CONFIG_APP=...]   - Build + generate .uf2 file"

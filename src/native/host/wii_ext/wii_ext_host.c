@@ -8,7 +8,7 @@
 #include "core/services/leds/leds.h"
 #include "core/services/profiles/profile.h"
 #include "platform/platform_i2c.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -110,7 +110,7 @@ static int io_read(void *ctx, uint8_t addr, uint8_t *data, uint16_t len) {
     return platform_i2c_read((platform_i2c_t)ctx, addr, data, len);
 }
 static void io_delay(uint32_t us) {
-    busy_wait_us(us);
+    platform_sleep_us(us);
 }
 
 // ---- Event mapping ----------------------------------------------------------
@@ -323,9 +323,19 @@ static bool init_port(wii_port_t *p, uint8_t sda, uint8_t scl) {
     p->pin_sda = sda;
     p->pin_scl = scl;
 
+    // RP2040: I2C bus is determined by the SDA pin number (hardware constraint).
+    // On all other platforms (ESP32, nRF, etc.) the GPIO matrix is flexible,
+    // so default to bus 0 and let the caller use wii_host_init_pins() to
+    // pick whichever GPIOs are wired on their board.
+#if defined(PICO_SDK_VERSION_MAJOR)
+    uint8_t bus_idx = (sda == 12 || sda == 16 || sda == 20 || sda == 0
+                       || sda == 4 || sda == 8) ? 0 : 1;
+#else
+    uint8_t bus_idx = 0;
+#endif
+
     platform_i2c_config_t cfg = {
-        .bus     = (sda == 12 || sda == 16 || sda == 20 || sda == 0
-                    || sda == 4 || sda == 8) ? 0 : 1,
+        .bus     = bus_idx,
         .sda_pin = sda,
         .scl_pin = scl,
         .freq_hz = WII_I2C_FREQ_HZ,
@@ -393,7 +403,7 @@ void wii_host_init_dual(uint8_t sda1, uint8_t scl1, uint8_t sda2, uint8_t scl2) 
 static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
     if (!p->initialized) return false;
 
-    uint32_t now = time_us_32();
+    uint32_t now = platform_time_us();
 
     if (!p->ext.ready) {
         if ((now - p->last_retry_us) < WII_RETRY_INTERVAL_US && p->last_retry_us != 0) {
@@ -473,7 +483,7 @@ void wii_host_task(void) {
     // Need at least port 0 to have data.
     if (!valid[0]) return;
 
-    uint32_t now = time_us_32();
+    uint32_t now = platform_time_us();
 
     // ------------------------------------------------------------------
     // Profile-cycle hotkey: MINUS (S1) + D-pad Up/Down held ≥ 2 s.

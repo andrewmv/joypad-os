@@ -1,0 +1,73 @@
+// app.h - WII2BLE App Manifest
+// Wii extension controller (Nunchuck / Classic / Classic Pro) to
+// USB HID + BLE HID adapter on ESP32-S3.
+//
+// Output modes:
+//   USB  — Wired USB HID gamepad (primary; uses ESP32-S3 native USB OTG)
+//   BLE  — Wireless BLE HID gamepad (HOGP peripheral; pairs to PC/HTPC)
+//
+// Both outputs are active simultaneously via the N:M router.
+// BOOT button: single click cycles USB output mode; hold clears BLE bonds.
+//
+// Wiring (I2C — adjust WII_PIN_SDA / WII_PIN_SCL for your board):
+//   Controller VCC  → 3V3
+//   Controller GND  → GND
+//   Controller SDA  → WII_PIN_SDA  (with 1.8–4.7 kΩ pull-up to 3V3)
+//   Controller SCL  → WII_PIN_SCL  (with 1.8–4.7 kΩ pull-up to 3V3)
+// Do NOT power from VBUS/5V — Wii extension accessories are 3.3 V parts.
+
+#ifndef APP_WII2BLE_H
+#define APP_WII2BLE_H
+
+// ============================================================================
+// APP METADATA
+// ============================================================================
+#define APP_NAME        "WII2BLE"
+#define APP_VERSION     "0.1.0"
+#define APP_DESCRIPTION "SNES Classic / Wii extension controller to USB HID + BLE HID adapter"
+#define APP_AUTHOR      "joypad-os contributors"
+
+// ============================================================================
+// CORE FEATURES
+// ============================================================================
+#define REQUIRE_NATIVE_WII_HOST 1
+#define WII_MAX_CONTROLLERS     1
+
+#define REQUIRE_USB_DEVICE      1
+#define USB_OUTPUT_PORTS        1
+
+#define REQUIRE_BLE_OUTPUT      1
+#define REQUIRE_PLAYER_MANAGEMENT 1
+
+// ============================================================================
+// I2C PIN CONFIGURATION
+// ============================================================================
+// Defaults for ESP32-S3-DevKitC-1 — change to match your PCB layout.
+// Any GPIO pair works on ESP32-S3 (flexible GPIO matrix).
+#define WII_PIN_SDA     1
+#define WII_PIN_SCL     2
+
+// I2C clock. Clone controllers are unreliable above ~100 kHz; 50 kHz is a
+// conservative default. Increase to 400000 if your specific hardware allows.
+#define WII_I2C_FREQ_HZ 50000
+
+// ============================================================================
+// ROUTING CONFIGURATION
+// ============================================================================
+#define ROUTING_MODE    ROUTING_MODE_BROADCAST
+#define MERGE_MODE      MERGE_ALL
+
+// ============================================================================
+// PLAYER MANAGEMENT
+// ============================================================================
+#define PLAYER_SLOT_MODE     PLAYER_SLOT_FIXED
+#define MAX_PLAYER_SLOTS     1
+#define AUTO_ASSIGN_ON_PRESS 1
+
+// ============================================================================
+// APP INTERFACE
+// ============================================================================
+void app_init(void);
+void app_task(void);
+
+#endif // APP_WII2BLE_H

@@ -9,13 +9,12 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-#include "soc/rtc_cntl_reg.h"
-#include "esp32s3/rom/usb/chip_usb_dw_wrapper.h"
-#include "esp32s3/rom/usb/usb_persist.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <stdio.h>
+#include "soc/rtc_cntl_reg.h"
+#include "esp32s3/rom/usb/chip_usb_dw_wrapper.h"
 
 #define DBL_TAP_DELAY_MS    1000
 

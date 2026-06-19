@@ -22,6 +22,7 @@ static struct platform_i2c {
     i2c_master_bus_handle_t bus_handle;
     device_entry_t devices[MAX_DEVICES_PER_BUS];
     uint8_t device_count;
+    uint32_t freq_hz;
     bool initialized;
 } i2c_buses[MAX_I2C_BUSES];
 
@@ -44,7 +45,7 @@ static i2c_master_dev_handle_t get_device_handle(struct platform_i2c* bus, uint8
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = addr,
-        .scl_speed_hz = 400000,
+        .scl_speed_hz = bus->freq_hz ? bus->freq_hz : 400000,
     };
 
     i2c_master_dev_handle_t dev_handle = NULL;
@@ -84,6 +85,7 @@ platform_i2c_t platform_i2c_init(const platform_i2c_config_t* config)
     }
 
     bus->device_count = 0;
+    bus->freq_hz = config->freq_hz;
     bus->initialized = true;
     ESP_LOGI(TAG, "Bus %d initialized (SDA=%d, SCL=%d, %luHz)",
              config->bus, config->sda_pin, config->scl_pin,

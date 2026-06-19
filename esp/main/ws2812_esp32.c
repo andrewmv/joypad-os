@@ -3,21 +3,28 @@
 // Uses ESP-IDF RMT peripheral with bytes encoder for hardware-timed WS2812
 // waveform generation. No CPU involvement during transmission.
 //
-// Feather ESP32-S3: NeoPixel on GPIO33, power on GPIO21 (active high)
+// Feather ESP32-S3:    NeoPixel on GPIO33, power on GPIO21 (active high)
+// DevKitC-1 ESP32-S3:  NeoPixel on GPIO48, no separate power pin
 
 #include "core/services/leds/neopixel/ws2812.h"
 #include "platform/platform.h"
 #include <stdio.h>
 #include <string.h>
 
-#ifdef BOARD_FEATHER_ESP32S3
+#if defined(BOARD_FEATHER_ESP32S3)
+#define NEOPIXEL_PIN           33
+#define NEOPIXEL_POWER_PIN     21
+#define NEOPIXEL_HAS_POWER_PIN 1
+#elif defined(BOARD_DEVKITC1_ESP32S3)
+#define NEOPIXEL_PIN           48
+#define NEOPIXEL_HAS_POWER_PIN 0
+#endif
+
+#if defined(BOARD_FEATHER_ESP32S3) || defined(BOARD_DEVKITC1_ESP32S3)
 
 #include "driver/rmt_tx.h"
 #include "driver/rmt_encoder.h"
 #include "driver/gpio.h"
-
-#define NEOPIXEL_PIN       33
-#define NEOPIXEL_POWER_PIN 21
 
 // RMT resolution: 10 MHz → 100ns per tick
 #define RMT_RESOLUTION_HZ  10000000
@@ -95,7 +102,7 @@ static void neo_set_off(void)
 
 void neopixel_init(void)
 {
-    // Enable NeoPixel power
+#ifdef NEOPIXEL_POWER_PIN
     gpio_config_t pwr_cfg = {
         .pin_bit_mask = (1ULL << NEOPIXEL_POWER_PIN),
         .mode = GPIO_MODE_OUTPUT,
@@ -108,6 +115,7 @@ void neopixel_init(void)
 
     // Small delay for power stabilization
     platform_sleep_ms(10);
+#endif
 
     // Configure RMT TX channel
     rmt_tx_channel_config_t chan_cfg = {
@@ -156,8 +164,12 @@ void neopixel_init(void)
     }
 
     neopixel_ready = true;
+#ifdef NEOPIXEL_POWER_PIN
     printf("[neopixel] NeoPixel ready (RMT on GPIO%d, power GPIO%d)\n",
            NEOPIXEL_PIN, NEOPIXEL_POWER_PIN);
+#else
+    printf("[neopixel] NeoPixel ready (RMT on GPIO%d)\n", NEOPIXEL_PIN);
+#endif
 
     // Start with LED off
     ws2812_send_pixel(0, 0, 0);
@@ -281,7 +293,7 @@ void neopixel_set_press_mask(uint16_t mask)
 
 #else
 // ============================================================================
-// Non-Feather ESP32 boards: stub (no NeoPixel)
+// All other ESP32-S3 boards: stub (no NeoPixel)
 // ============================================================================
 
 void neopixel_init(void)
@@ -330,4 +342,4 @@ void neopixel_set_override_color(uint8_t r, uint8_t g, uint8_t b)
     (void)r; (void)g; (void)b;
 }
 
-#endif // BOARD_FEATHER_ESP32S3
+#endif // BOARD_FEATHER_ESP32S3 || BOARD_DEVKITC1_ESP32S3

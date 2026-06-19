@@ -1,0 +1,11 @@
+# ESP32-S3-DevKitC-1 board overrides
+# Button: GPIO 0 (BOOT button, active low)
+# NeoPixel: GPIO 48 (onboard WS2812B, no separate power pin)
+
+# 8MB flash (DevKitC-1 default; change to CONFIG_ESPTOOLPY_FLASHSIZE_4MB if needed)
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+# Custom partition table for TinyUF2
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_uf2.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_uf2.csv"

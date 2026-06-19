@@ -207,6 +207,44 @@ elseif(CONFIG_APP STREQUAL "btusb2usb")
     set(APP_BTSTACK_MODE "central")
     set(APP_NEEDS_USB_HOST ON)
 
+elseif(CONFIG_APP STREQUAL "wii2ble")
+    # wii2ble: Wii extension (I2C) → USB HID Device + BLE HID Peripheral (ESP32-S3)
+    set(APP_SRCS
+        "btstack_hal_esp32.c"
+        "stubs_peripheral.c"
+        "${SHARED_SRC}/apps/wii2ble/app.c"
+
+        # --- Wii extension I2C host ---
+        "${SHARED_SRC}/native/host/wii_ext/wii_ext_host.c"
+        "${SHARED_SRC}/lib/wii_ext/wii_ext.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_classic.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_nunchuck.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_guitar.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_drums.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_turntable.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_taiko.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_udraw.c"
+        "${SHARED_SRC}/lib/wii_ext/ext_motionplus.c"
+        "${SHARED_SRC}/platform/esp32/platform_i2c_esp32.c"
+
+        # --- BLE output (peripheral / HOGP mode) ---
+        "${SHARED_SRC}/bt/ble_output/ble_output.c"
+        "${SHARED_SRC}/bt/ble_output/ble_output_keyboard.c"
+        "${SHARED_SRC}/bt/ble_output/ble_output_mouse.c"
+        "${SHARED_SRC}/bt/ble_output/ble_output_xbox.c"
+        "${SHARED_SRC}/bt/ble_output/ble_nus.c"
+        "${SHARED_SRC}/bt/ble_output/ble_xbox_gatt_db.c"
+
+        # --- BTstack transport (ESP32 peripheral mode) ---
+        "${SHARED_SRC}/bt/transport/bt_transport.c"
+        "${SHARED_SRC}/bt/transport/bt_transport_esp32.c"
+        # --- Battery monitor (required by ble_output on ESP32) ---
+        "battery_esp32.c"
+    )
+    set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/wii2ble")
+    set(APP_NEEDS_BTSTACK ON)
+    set(APP_BTSTACK_MODE "peripheral")
+
 else()
     # Default: bt2usb
     set(APP_SRCS
@@ -235,6 +273,7 @@ set(SRCS
     "${SHARED_SRC}/core/services/players/feedback.c"
     "${SHARED_SRC}/core/services/profiles/profile.c"
     "${SHARED_SRC}/core/services/profiles/profile_indicator.c"
+
 
     # --- USB Device ---
     "${SHARED_SRC}/usb/usbd/usbd.c"
@@ -492,7 +531,6 @@ endif()
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     CONFIG_USB=1
     PLATFORM_ESP32=1
-    BUTTON_USER_GPIO=0
     CFG_TUSB_CONFIG_FILE="tusb_config_esp32.h"
 )
 
@@ -506,7 +544,17 @@ if(NOT DEFINED CONFIG_BOARD)
     set(CONFIG_BOARD "devkit")
 endif()
 if(CONFIG_BOARD STREQUAL "feather_esp32s3")
-    target_compile_definitions(${COMPONENT_LIB} PUBLIC BOARD_FEATHER_ESP32S3=1)
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        BOARD_FEATHER_ESP32S3=1
+        BUTTON_USER_GPIO=0
+    )
+elseif(CONFIG_BOARD STREQUAL "devkitc1_esp32s3")
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        BOARD_DEVKITC1_ESP32S3=1
+        BUTTON_USER_GPIO=0
+    )
+else()
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC BUTTON_USER_GPIO=0)
 endif()
 
 # App-specific definitions
@@ -537,6 +585,15 @@ elseif(CONFIG_APP STREQUAL "btusb2usb")
         ENABLE_BTSTACK=1
         OLED_I2C_DISPLAY=1
         DISABLE_DISPLAY_SPI=1
+    )
+elseif(CONFIG_APP STREQUAL "wii2ble")
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        CONFIG_WII2BLE=1
+        REQUIRE_BLE_OUTPUT=1
+        BTSTACK_USE_ESP32=1
+        ENABLE_BTSTACK=1
+        DISABLE_USB_HOST=1
+        USBD_DEFAULT_MODE=1
     )
 elseif(APP_NEEDS_BTSTACK)
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
