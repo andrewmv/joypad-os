@@ -295,14 +295,13 @@ static btstack_packet_callback_registration_t sm_event_callback_registration;
 // ADVERTISING DATA
 // ============================================================================
 
+// Advertising payload: flags + HID service UUID + appearance (≤ 31 bytes).
+// The complete local name goes in the scan response (see scan_resp_* below)
+// to avoid exceeding the 31-byte advertising PDU limit.
 static const uint8_t adv_data_standard[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
-    // Complete local name: "JoypadOS Controller"
-    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
-    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
-    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
-    // 16-bit Service UUIDs: HID Service
+    // 16-bit Service UUIDs: HID Service (0x1812)
     0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
@@ -313,16 +312,25 @@ static const uint8_t adv_data_standard[] = {
 static const uint8_t adv_data_xbox[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
-    // Complete local name: "Joypad Xinput"
-    0x0E, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
-    'J', 'o', 'y', 'p', 'a', 'd', ' ',
-    'X', 'i', 'n', 'p', 'u', 't',
-    // 16-bit Service UUIDs: HID Service
+    // 16-bit Service UUIDs: HID Service (0x1812)
     0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
     // Appearance: Gamepad (0x03C4)
     0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC4, 0x03,
+};
+
+// Scan response: complete local name (returned on SCAN_REQ, carries device name)
+static const uint8_t scan_resp_standard[] = {
+    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
+    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
+};
+
+static const uint8_t scan_resp_xbox[] = {
+    0x0E, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', ' ',
+    'X', 'i', 'n', 'p', 'u', 't',
 };
 
 // ============================================================================
@@ -612,8 +620,19 @@ void ble_output_late_init(void)
     uint16_t adv_int_max = 0x0030;  // 30ms
     bd_addr_t null_addr;
     memset(null_addr, 0, 6);
+    const uint8_t *scan_resp;
+    uint16_t scan_resp_len;
+    if (current_mode == BLE_MODE_XBOX) {
+        scan_resp = scan_resp_xbox;
+        scan_resp_len = sizeof(scan_resp_xbox);
+    } else {
+        scan_resp = scan_resp_standard;
+        scan_resp_len = sizeof(scan_resp_standard);
+    }
+
     gap_advertisements_set_params(adv_int_min, adv_int_max, 0, 0, null_addr, 0x07, 0x00);
     gap_advertisements_set_data(adv_data_len, (uint8_t *)adv_data);
+    gap_scan_response_set_data(scan_resp_len, (uint8_t *)scan_resp);
     gap_advertisements_enable(1);
 
     // Register event handlers
