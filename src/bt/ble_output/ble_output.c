@@ -261,10 +261,28 @@ typedef enum {
 
 static hci_con_handle_t con_handle = HCI_CON_HANDLE_INVALID;
 static bool ble_connected = false;
+static bool ble_output_enabled = true;
 
 bool ble_output_is_connected(void)
 {
     return ble_connected;
+}
+
+void ble_output_set_enabled(bool enabled)
+{
+    if (ble_output_enabled == enabled) return;
+    ble_output_enabled = enabled;
+
+    if (!enabled) {
+        printf("[ble_output] BLE disabled (USB host connected)\n");
+        gap_advertisements_enable(0);
+        if (con_handle != HCI_CON_HANDLE_INVALID) {
+            gap_disconnect(con_handle);
+        }
+    } else {
+        printf("[ble_output] BLE enabled (USB host disconnected)\n");
+        gap_advertisements_enable(1);
+    }
 }
 
 // Pending reports (flow-controlled — only one at a time)
@@ -394,8 +412,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             con_handle = HCI_CON_HANDLE_INVALID;
             ble_connected = false;
             pending_type = PENDING_NONE;
-            printf("[ble_output] Disconnected, restarting advertising\n");
-            gap_advertisements_enable(1);
+            if (ble_output_enabled) {
+                printf("[ble_output] Disconnected, restarting advertising\n");
+                gap_advertisements_enable(1);
+            } else {
+                printf("[ble_output] Disconnected (BLE disabled, not advertising)\n");
+            }
             break;
 
         case SM_EVENT_JUST_WORKS_REQUEST:
@@ -735,6 +757,7 @@ static void ble_output_task_xbox(void)
 
 void ble_output_task(void)
 {
+    if (!ble_output_enabled) return;
     if (!ble_connected || con_handle == HCI_CON_HANDLE_INVALID) return;
 
     if (current_mode == BLE_MODE_XBOX) {

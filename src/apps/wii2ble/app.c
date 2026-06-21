@@ -240,11 +240,13 @@ static void render_display(void)
 
     // ---- BLE status ----
     display_text(0, 26, "BLE:");
-    display_text(26, 26, ble_output_is_connected() ? "Paired      " : "Searching...");
+    if (tud_mounted())                display_text(26, 26, "Disabled    ");
+    else if (ble_output_is_connected()) display_text(26, 26, "Paired      ");
+    else                               display_text(26, 26, "Searching...");
 
     // ---- USB status ----
     display_text(0, 36, "USB:");
-    display_text(26, 36, tud_mounted() ? "HID" : "Disconnected");
+    display_text(26, 36, tud_mounted() ? "Connected   " : "Disconnected");
 
     // ---- Port presence indicators ----
     display_text(0, 50, "P1");
@@ -266,6 +268,17 @@ static void render_display(void)
 void app_task(void)
 {
     button_task();
+
+    // USB takes priority: disable BLE advertising and drop any BLE connection
+    // when a USB HID host enumerates the device; re-enable when it disconnects.
+    {
+        static bool usb_was_mounted = false;
+        bool usb_mounted = tud_mounted();
+        if (usb_mounted != usb_was_mounted) {
+            ble_output_set_enabled(!usb_mounted);
+            usb_was_mounted = usb_mounted;
+        }
+    }
 
     // LED state: green=USB active, solid blue=BLE paired, breathing blue=advertising.
     // leds_set_connected_devices controls breathing (0) vs solid (>0) in leds_task;

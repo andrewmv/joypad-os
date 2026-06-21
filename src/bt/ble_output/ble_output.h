@@ -33,6 +33,7 @@ void ble_output_task(void);
 
 // Connection state
 bool ble_output_is_connected(void);
+void ble_output_set_enabled(bool enabled);  // false = stop advertising + drop connection
 
 // Mode selection
 ble_output_mode_t ble_output_get_mode(void);
