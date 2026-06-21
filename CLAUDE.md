@@ -10,9 +10,11 @@ This is a personal fork. Changes relative to upstream:
 
 ### Added: `wii2ble` app — Wii extension → USB HID + BLE HID on ESP32-S3
 
-Routes a SNES Classic (or any Wii extension accessory) over I2C to two simultaneous outputs via `ROUTING_MODE_BROADCAST`:
+Routes a SNES Classic (or any Wii extension accessory) over I2C to two simultaneous outputs via `ROUTING_MODE_MERGE`:
 - **USB HID** — wired gamepad via ESP32-S3 native USB OTG
 - **BLE HID** — wireless HOGP peripheral (pairs like a Bluetooth gamepad)
+
+Two-player is supported over USB (each controller socket is a separate USB HID gamepad). BLE is single-player only (one HOGP connection).
 
 **Build:**
 ```bash
@@ -33,11 +35,22 @@ idf.py -p /dev/ttyUSB0 flash monitor
 - Double click — cycle BLE output mode (Standard ↔ Xbox BLE)
 - Hold — clear BLE bonds and restart advertising
 
-**I2C pin defaults** (`src/apps/wii2ble/app.h`): SDA=GPIO1, SCL=GPIO2 at 50 kHz (conservative for clone controllers). Change for your PCB.
+**I2C pin defaults** (`src/apps/wii2ble/app.h`): P1 SDA=GPIO10, SCL=GPIO9; P2 SDA=GPIO12, SCL=GPIO11. Display shares the P2 bus. Detect pins: GPIO13 (P1), GPIO14 (P2). Change to match your PCB.
 
 **New files:**
-- `src/apps/wii2ble/` — app wiring, button handler, BLE init
+- `src/apps/wii2ble/` — app wiring, button handler, BLE init, OLED status render
 - `esp/sdkconfig.board.devkitc1_esp32s3` — 8MB flash, TinyUF2 partitions, GPIO48 NeoPixel
+
+**OLED status display** (SH1106 128×64, I2C 0x3C, shares P2 bus at 400 kHz):
+- P1/P2 controller rows with per-button indicators
+- BLE pairing status and USB HID connection status
+- Port presence indicators
+- Set `WII_DISPLAY_ADDR 0x3C` in `app.h` (255 to disable)
+
+**Two-player support:**
+- Each socket has its own I2C bus (P1=bus 0, P2=bus 1); all Wii accessories share address 0x52 so they can't share a bus
+- Presence-detect GPIO (`WII_DETECT_GPIO`, `WII_DETECT_GPIO2`) — connect socket VCC/detect pin via pull-down; skips I2C on empty sockets
+- P2 disabled by setting `WII_PIN_SDA2 = 255`
 
 ### Ported: Wii extension host driver to ESP32
 
@@ -49,6 +62,16 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 `src/platform/esp32/platform_i2c_esp32.c` was hardcoding 400 kHz for all devices. Now uses `config->freq_hz` (falls back to 400 kHz if zero).
 
+### Added: per-device I2C frequency (`platform_i2c_set_device_freq`)
+
+`src/platform/esp32/platform_i2c_esp32.c` / `src/platform/platform_i2c.h` — new function to register a device at a specific clock rate, overriding the bus default. Used so the SH1106 display runs at 400 kHz while a Wii controller on the same bus runs at 50 kHz.
+
+### Added: SH1106 I2C display driver (`display_init_sh1106_i2c`)
+
+`src/core/services/display/display.c` — new init function for SH1106 over I2C. Sets `rotated_panel=false` and `col_offset=2` (SH1106 has 132-column internal RAM). The SH1106 command sequence was already in the SPI path; this wires it to the I2C transport.
+
+`esp/main/display_i2c_esp32.c` — bus/pins now come from `OLED_I2C_BUS`/`OLED_I2C_SDA`/`OLED_I2C_SCL` compile-time defines (defaults remain Feather-compatible).
+
 ### Upstream bug fixes (suitable for upstream PRs)
 
 | File | Fix |
@@ -57,6 +80,11 @@ idf.py -p /dev/ttyUSB0 flash monitor
 | `src/lib/libxsm3/excrypt.h` | Parenthesise `SWAP16/32/64` macros (`-Werror=parentheses`) |
 | `src/bt/transport/bt_transport_esp32.c` | `memcpy` replaces `strncpy` (`-Werror=stringop-truncation`) |
 | `esp/Makefile` | `SHELL := /bin/bash` — build was failing under dash (`source` is bash-only) |
+| `src/bt/ble_output/ble_output.c` | BLE advertising PDU was 34 bytes (over 31-byte limit) — device name silently truncated; moved name to scan response. Also: no `gap_scan_response_set_data` call meant the scan response was never sent |
+
+### Routing mode for multiple outputs
+
+`ROUTING_MODE_SIMPLE` only sends to the **first** active route. `ROUTING_MODE_BROADCAST` ignores `router_add_route` entirely and requires `router_set_active_outputs`. **`ROUTING_MODE_MERGE` is the correct mode** when one input should reach multiple output targets via explicit `router_add_route` calls — it iterates all active routes and deduplicates by output target.
 
 ### ESP-IDF v6 gotchas
 
