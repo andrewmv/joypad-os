@@ -267,14 +267,25 @@ void app_task(void)
 {
     button_task();
 
-    // Mirror USB output mode colour on the NeoPixel
-    static usb_output_mode_t last_led_mode = USB_OUTPUT_MODE_COUNT;
-    usb_output_mode_t mode = usbd_get_mode();
-    if (mode != last_led_mode) {
-        uint8_t r, g, b;
-        usbd_get_mode_color(mode, &r, &g, &b);
-        leds_set_color(r, g, b);
-        last_led_mode = mode;
+    // LED state: green=USB active, solid blue=BLE paired, breathing blue=advertising.
+    // leds_set_connected_devices controls breathing (0) vs solid (>0) in leds_task;
+    // leds_set_color sets the override color. leds_task remains the sole caller of
+    // neopixel_task so there's no contention.
+    {
+        typedef enum { LED_ADVERTISING, LED_BLE, LED_USB } led_state_t;
+        static led_state_t last_led = (led_state_t)-1;
+
+        led_state_t led;
+        if (tud_mounted())                 led = LED_USB;
+        else if (ble_output_is_connected()) led = LED_BLE;
+        else                               led = LED_ADVERTISING;
+
+        if (led != last_led) {
+            if (led == LED_USB) leds_set_color(0, 64, 0);  // green
+            else                leds_set_color(0,  0, 64); // blue
+            leds_set_connected_devices(led == LED_ADVERTISING ? 0 : 1);
+            last_led = led;
+        }
     }
 
 #ifdef OLED_I2C_DISPLAY
