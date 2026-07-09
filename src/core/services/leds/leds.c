@@ -9,6 +9,7 @@
 #include "platform/platform.h"
 
 static int connected_devices = 0;
+static bool ignore_player_count = false;
 
 // ============================================================================
 // PLAIN GPIO LED (fallback when no NeoPixel)
@@ -97,6 +98,11 @@ void leds_set_connected_devices(int count)
     connected_devices = count;
 }
 
+void leds_set_ignore_player_count(bool ignore)
+{
+    ignore_player_count = ignore;
+}
+
 void leds_set_color(uint8_t r, uint8_t g, uint8_t b)
 {
     neopixel_set_override_color(r, g, b);
@@ -104,7 +110,9 @@ void leds_set_color(uint8_t r, uint8_t g, uint8_t b)
 
 void leds_task(void)
 {
-    int count = playersCount > connected_devices ? playersCount : connected_devices;
+    int count = ignore_player_count
+                  ? connected_devices
+                  : (playersCount > connected_devices ? playersCount : connected_devices);
 #ifdef BOARD_LED_PIN
     board_led_task(count);
 #endif

@@ -135,19 +135,33 @@ void app_init(void)
 #else
     wii_host_init_pins_detected(WII_PIN_SDA, WII_PIN_SCL, WII_DETECT_GPIO);
 #endif
+    // This app drives the LED from link state (USB/BLE/advertising) only.
+    // Disable the Wii host driver's controller-type LED writes so they don't
+    // compete with app_task()'s green/blue/breathing state machine.
+    wii_host_set_status_led(false);
 
-    // Configure router: broadcast Wii input to both USB and BLE outputs
+    // Configure router: each Wii port is a distinct player in SIMPLE mode.
+    // USB receives P1→slot0 and P2→slot1; BLE is capped at slot0 so only
+    // P1 is forwarded over wireless (single HOGP peripheral limitation).
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,
-        .merge_mode = MERGE_MODE,
         .max_players_per_output = {
             [OUTPUT_TARGET_USB_DEVICE]     = USB_OUTPUT_PORTS,
-            [OUTPUT_TARGET_BLE_PERIPHERAL] = MAX_PLAYER_SLOTS,
+            [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
         },
-        .merge_all_inputs = false,
         .transform_flags = TRANSFORM_NONE,
     };
     router_init(&router_cfg);
+
+    // Register outputs for BROADCAST mode (router_simple_mode is called for each).
+    // Order determines player slot assignment order; USB first so P1→slot0 on USB
+    // before BLE also claims slot0 for the same physical controller.
+    static output_target_t broadcast_outputs[] = {
+        OUTPUT_TARGET_USB_DEVICE,
+        OUTPUT_TARGET_BLE_PERIPHERAL,
+    };
+    router_set_active_outputs(broadcast_outputs,
+                              sizeof(broadcast_outputs) / sizeof(broadcast_outputs[0]));
 
     router_add_route(INPUT_SOURCE_NATIVE_WII, OUTPUT_TARGET_USB_DEVICE,     0);
     router_add_route(INPUT_SOURCE_NATIVE_WII, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
@@ -158,6 +172,11 @@ void app_init(void)
         .auto_assign_on_press = AUTO_ASSIGN_ON_PRESS,
     };
     players_init_with_config(&player_cfg);
+
+    // Status LED shows link state only (USB / BLE / advertising), not controller
+    // presence — so plugging/unplugging a Wii controller never disturbs it.
+    // Controller presence is indicated on the OLED instead.
+    leds_set_ignore_player_count(true);
 
     static const profile_config_t profile_cfg = {
         .output_profiles = { NULL },

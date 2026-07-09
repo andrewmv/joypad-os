@@ -70,8 +70,10 @@
 // ============================================================================
 // ROUTING CONFIGURATION
 // ============================================================================
-#define ROUTING_MODE    ROUTING_MODE_MERGE
-#define MERGE_MODE      MERGE_ALL
+// BROADCAST mode: each input event is dispatched to all active outputs via
+// router_simple_mode, so each Wii port is a distinct player slot per output.
+// USB gets P1→slot0 + P2→slot1; BLE is capped to slot0 (single HOGP peripheral).
+#define ROUTING_MODE    ROUTING_MODE_BROADCAST
 
 // ============================================================================
 // PLAYER MANAGEMENT

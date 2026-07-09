@@ -59,6 +59,15 @@ static bool             hotkey_fired          = false;
 // LED scan-blink state (toggles each retry while hunting for a slave).
 static bool             led_scan_state        = false;
 
+// When false, the driver suppresses all leds_set_color() calls, letting the
+// calling app own the LED entirely (e.g. wii2ble uses link state, not device type).
+static bool             status_led_enabled    = true;
+
+void wii_host_set_status_led(bool enabled)
+{
+    status_led_enabled = enabled;
+}
+
 // Per-accessory LED colors (dim so the status LED doesn't overpower the
 // player-index indication layered on top by core/services/leds).
 #define LED_WII_NUNCHUCK_R    0
@@ -426,7 +435,7 @@ static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
             wii_ext_mark_disconnected(&p->ext);
             p->prev_connected = false;
             p->last_retry_us  = 0;
-            if (port_index == 0) leds_set_color(0, 0, 0);
+            if (port_index == 0 && status_led_enabled) leds_set_color(0, 0, 0);
         }
         return false;
     }
@@ -440,7 +449,7 @@ static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
         p->last_retry_us = now;
 
         // LED scan-blink on port 0 only (port 1 is secondary).
-        if (port_index == 0) {
+        if (port_index == 0 && status_led_enabled) {
             led_scan_state = !led_scan_state;
             leds_set_color(led_scan_state ? 8 : 0,
                            led_scan_state ? 8 : 0,
@@ -463,7 +472,7 @@ static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
         if (p->prev_connected) {
             printf("[wii_host] port %d: disconnected\n", port_index);
             p->prev_connected = false;
-            if (port_index == 0) leds_set_color(0, 0, 0);
+            if (port_index == 0 && status_led_enabled) leds_set_color(0, 0, 0);
         }
         return false;
     }
@@ -471,7 +480,7 @@ static bool poll_port(wii_port_t *p, uint8_t port_index, wii_ext_state_t *out) {
         printf("[wii_host] port %d: connected type=%d\n", port_index, (int)out->type);
         p->prev_connected = true;
         wii_stick_range_reset(port_index);
-        if (port_index == 0) {
+        if (port_index == 0 && status_led_enabled) {
             if (out->type == WII_EXT_TYPE_NUNCHUCK) {
                 leds_set_color(LED_WII_NUNCHUCK_R, LED_WII_NUNCHUCK_G, LED_WII_NUNCHUCK_B);
             } else {
