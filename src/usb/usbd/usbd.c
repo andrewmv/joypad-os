@@ -2066,10 +2066,16 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
     if (output_mode == USB_OUTPUT_MODE_SINPUT ||
         output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
         switch (itf) {
-            case ITF_NUM_HID_GAMEPAD:  return sinput_report_descriptor;
+            case ITF_NUM_HID_GAMEPAD: return sinput_report_descriptor;
+#ifdef USBD_LEAN_HID_COMPOSITE
+            // In lean builds, interface 1 is the P2 gamepad (ITF_NUM_HID_GAMEPAD_P2 = 1),
+            // not the keyboard — both share the same interface number value.
+            case ITF_NUM_HID_GAMEPAD_P2: return sinput_report_descriptor;
+#else
             case ITF_NUM_HID_KEYBOARD: return sinput_keyboard_report_descriptor;
             case ITF_NUM_HID_MOUSE:    return sinput_mouse_report_descriptor;
-            default:                   return sinput_report_descriptor;
+#endif
+            default: return sinput_report_descriptor;
         }
     }
 
@@ -2109,10 +2115,13 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
 uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer, uint16_t reqlen)
 {
     // SInput/KB/Mouse composite: route by interface
+    bool is_gamepad_itf = (itf == ITF_NUM_HID_GAMEPAD);
+#ifdef USBD_LEAN_HID_COMPOSITE
+    is_gamepad_itf = is_gamepad_itf || (itf == ITF_NUM_HID_GAMEPAD_P2);
+#endif
     if ((output_mode == USB_OUTPUT_MODE_SINPUT ||
          output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) &&
-        itf != ITF_NUM_HID_GAMEPAD) {
-        // Keyboard/mouse interfaces don't have get_report handlers
+        !is_gamepad_itf) {
         return 0;
     }
 

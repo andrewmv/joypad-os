@@ -153,6 +153,16 @@ void app_init(void)
     };
     router_init(&router_cfg);
 
+    // Register outputs for BROADCAST mode (router_simple_mode is called for each).
+    // Order determines player slot assignment order; USB first so P1→slot0 on USB
+    // before BLE also claims slot0 for the same physical controller.
+    static output_target_t broadcast_outputs[] = {
+        OUTPUT_TARGET_USB_DEVICE,
+        OUTPUT_TARGET_BLE_PERIPHERAL,
+    };
+    router_set_active_outputs(broadcast_outputs,
+                              sizeof(broadcast_outputs) / sizeof(broadcast_outputs[0]));
+
     router_add_route(INPUT_SOURCE_NATIVE_WII, OUTPUT_TARGET_USB_DEVICE,     0);
     router_add_route(INPUT_SOURCE_NATIVE_WII, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
 
