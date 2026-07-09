@@ -87,6 +87,14 @@ static joypad_hid_report_t hid_report;
 static input_event_t pending_events[USB_MAX_PLAYERS];
 static bool pending_flags[USB_MAX_PLAYERS] = {false};
 
+// Number of HID gamepad instances in the config descriptor.
+// Lean builds (ESP32/CH32) get P1 + P2; full RP2040 builds get one.
+#if defined(PLATFORM_ESP32) || defined(PLATFORM_CH32)
+#define USB_HID_GAMEPAD_INSTANCES 2
+#else
+#define USB_HID_GAMEPAD_INSTANCES 1
+#endif
+
 // Serial number from board unique ID (12 hex chars + null)
 #define USB_SERIAL_LEN 12
 static char usb_serial_str[USB_SERIAL_LEN + 1];
@@ -905,9 +913,11 @@ void usbd_task(void)
         case USB_OUTPUT_MODE_HID:
             // HID mode: process CDC tasks
             cdc_task();
-            // Send HID report if device is ready
-            if (tud_hid_ready()) {
-                usbd_send_report(0);
+            // Send HID report for each player when their interface is ready
+            for (uint8_t p = 0; p < USB_HID_GAMEPAD_INSTANCES; p++) {
+                if (tud_hid_n_ready(p)) {
+                    usbd_send_report(p);
+                }
             }
             break;
 
@@ -918,9 +928,11 @@ void usbd_task(void)
             // Run mode task (handles feature response)
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_SINPUT];
             if (mode && mode->task) mode->task();
-            // Send SInput report if device is ready
-            if (tud_hid_ready()) {
-                usbd_send_report(0);
+            // Send SInput report for each player when their interface is ready
+            for (uint8_t p = 0; p < USB_HID_GAMEPAD_INSTANCES; p++) {
+                if (tud_hid_n_ready(p)) {
+                    usbd_send_report(p);
+                }
             }
             break;
         }
@@ -958,8 +970,8 @@ static bool usbd_send_hid_report(uint8_t player_index)
         return false;
     }
 
-    // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    // Check readiness per-player (each player maps to a separate HID instance)
+    if (!tud_hid_n_ready(player_index)) {
         return false;
     }
 
@@ -988,8 +1000,8 @@ static bool usbd_send_sinput_report(uint8_t player_index)
         return false;
     }
 
-    // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    // Check readiness per-player (each player maps to a separate HID instance)
+    if (!tud_hid_n_ready(player_index)) {
         return false;
     }
 
@@ -1481,14 +1493,24 @@ const OutputInterface usbd_output_interface = {
 #define USBD_LEAN_HID_COMPOSITE 1
 #endif
 
+// Number of HID gamepad instances in the config descriptor.
+// Lean builds (ESP32/CH32) get two gamepads (P1 + P2); full builds get one.
+#ifdef USBD_LEAN_HID_COMPOSITE
+#define USB_HID_GAMEPAD_INSTANCES 2
+#else
+#define USB_HID_GAMEPAD_INSTANCES 1
+#endif
+
 // Interface numbers (SInput composite: 3 HID + CDC on RP2040, 1 HID + CDC on lean)
 // HID interface numbers are defined in usbd.h (ITF_NUM_HID_GAMEPAD=0, KEYBOARD=1, MOUSE=2)
 #ifdef USBD_LEAN_HID_COMPOSITE
-// Skip keyboard+mouse so total IN endpoints stay low (gamepad + CDC notif + CDC data = 3)
+// Lean (ESP32/CH32): two gamepads (P1 + P2) + CDC. No keyboard/mouse to stay within
+// EP/FIFO budget: P1 IN 0x81, CDC notify 0x82, CDC data IN 0x83, P2 IN 0x84 = 4 TX FIFOs.
+#define ITF_NUM_HID_GAMEPAD_P2  (ITF_NUM_HID_GAMEPAD + 1)  // = 1
 enum {
 #if CFG_TUD_CDC >= 1
-    ITF_NUM_CDC_0 = ITF_NUM_HID_GAMEPAD + 1,
-    ITF_NUM_CDC_0_DATA,
+    ITF_NUM_CDC_0 = ITF_NUM_HID_GAMEPAD_P2 + 1,  // = 2
+    ITF_NUM_CDC_0_DATA,                            // = 3
 #endif
     ITF_NUM_TOTAL
 };
@@ -1520,10 +1542,12 @@ enum {
 
 #if CFG_TUD_CDC >= 1
 #ifdef USBD_LEAN_HID_COMPOSITE
-// CDC endpoints shifted down (no keyboard/mouse endpoints)
+// CDC endpoints (lean: gamepad P1=0x81, CDC notify=0x82, CDC data=0x83, gamepad P2=0x84)
 #define EPNUM_CDC_0_NOTIF   0x82
 #define EPNUM_CDC_0_OUT     0x03
 #define EPNUM_CDC_0_IN      0x83
+// Player 2 gamepad IN endpoint (4th and final TX FIFO on DWC2)
+#define EPNUM_HID_GAMEPAD_P2    0x84
 #else
 #define EPNUM_CDC_0_NOTIF   0x84
 #define EPNUM_CDC_0_OUT     0x05
@@ -1634,6 +1658,16 @@ static const uint8_t desc_frag_hid_gamepad[] = {
 static const uint8_t desc_frag_sinput_gamepad[] = {
     TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_report_descriptor), EPNUM_HID_GAMEPAD_OUT, EPNUM_HID_GAMEPAD, CFG_TUD_HID_EP_BUFSIZE, 1),
 };
+
+// Player 2 gamepad fragments (lean/ESP32 only — IN-only, no rumble on SNES Classic)
+#ifdef USBD_LEAN_HID_COMPOSITE
+static const uint8_t desc_frag_hid_gamepad_p2[] = {
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_GAMEPAD_P2, 0, HID_ITF_PROTOCOL_NONE, sizeof(hid_report_descriptor), EPNUM_HID_GAMEPAD_P2, CFG_TUD_HID_EP_BUFSIZE, 1),
+};
+static const uint8_t desc_frag_sinput_gamepad_p2[] = {
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_GAMEPAD_P2, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_report_descriptor), EPNUM_HID_GAMEPAD_P2, CFG_TUD_HID_EP_BUFSIZE, 1),
+};
+#endif
 #ifndef USBD_LEAN_HID_COMPOSITE
 static const uint8_t desc_frag_sinput_keyboard[] = {
     TUD_HID_DESCRIPTOR(ITF_NUM_HID_KEYBOARD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_keyboard_report_descriptor), EPNUM_HID_KEYBOARD, 16, 1),
@@ -1665,7 +1699,9 @@ static const uint8_t desc_frag_cdc_only[] = {
 };
 
 // Max possible config descriptor sizes
-#define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+// HID: 2 gamepads (lean) or 1 gamepad (full); use 2 to cover both
+#define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+// SInput lean: P1 INOUT + P2 IN + CDC; full: P1 INOUT + KB + Mouse + CDC
 #define MAX_CONFIG_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
 #define MAX_CONFIG_LEN_CDC    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
 
@@ -1688,11 +1724,20 @@ static void build_config_descriptors(void)
     uint16_t off;
 
     // --- HID mode descriptor ---
-    // Interfaces: 1 HID + 2 CDC (data)
-    uint8_t hid_itf_count = 1 + 2;  // HID + CDC0 (2 interfaces)
+#ifdef USBD_LEAN_HID_COMPOSITE
+    // Lean (ESP32/CH32): P1 + P2 gamepads + CDC — 4 interfaces total
+    uint8_t hid_itf_count = 2 + 2;  // 2 HID + CDC0 (2 interfaces)
+    off = TUD_CONFIG_DESC_LEN;
+    off = append_fragment(runtime_desc_hid, off, desc_frag_hid_gamepad,    sizeof(desc_frag_hid_gamepad));
+    off = append_fragment(runtime_desc_hid, off, desc_frag_hid_gamepad_p2, sizeof(desc_frag_hid_gamepad_p2));
+    off = append_fragment(runtime_desc_hid, off, desc_frag_cdc0,           sizeof(desc_frag_cdc0));
+#else
+    // Full: 1 HID + CDC0 (2 interfaces)
+    uint8_t hid_itf_count = 1 + 2;
     off = TUD_CONFIG_DESC_LEN;  // Skip header, fill later
     off = append_fragment(runtime_desc_hid, off, desc_frag_hid_gamepad, sizeof(desc_frag_hid_gamepad));
     off = append_fragment(runtime_desc_hid, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
+#endif
 
     // Write config header (9 bytes)
     uint8_t hid_header[] = {
@@ -1702,11 +1747,12 @@ static void build_config_descriptors(void)
 
     // --- SInput mode descriptor ---
 #ifdef USBD_LEAN_HID_COMPOSITE
-    // Lean (ESP32/CH32): gamepad only (no keyboard/mouse) to stay within EP/FIFO budget
-    uint8_t sinput_itf_count = 1 + 2;  // 1 HID + CDC0 (2 interfaces)
+    // Lean (ESP32/CH32): P1 (INOUT) + P2 (IN-only) gamepads + CDC — 4 interfaces total
+    uint8_t sinput_itf_count = 2 + 2;  // 2 HID + CDC0 (2 interfaces)
     off = TUD_CONFIG_DESC_LEN;
-    off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_gamepad, sizeof(desc_frag_sinput_gamepad));
-    off = append_fragment(runtime_desc_sinput, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
+    off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_gamepad,    sizeof(desc_frag_sinput_gamepad));
+    off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_gamepad_p2, sizeof(desc_frag_sinput_gamepad_p2));
+    off = append_fragment(runtime_desc_sinput, off, desc_frag_cdc0,              sizeof(desc_frag_cdc0));
 #else
     // RP2040: full composite (gamepad + keyboard + mouse + CDC)
     uint8_t sinput_itf_count = 3 + 2;  // 3 HID + CDC0 (2 interfaces)
@@ -2120,6 +2166,12 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
             }
             return;
         }
+#ifdef USBD_LEAN_HID_COMPOSITE
+        if (itf == ITF_NUM_HID_GAMEPAD_P2) {
+            // P2 gamepad output — no rumble supported on SNES Classic, ignore
+            return;
+        }
+#else
         if (itf == ITF_NUM_HID_KEYBOARD) {
             // Keyboard LED output report → KB/Mouse handler
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_KEYBOARD_MOUSE];
@@ -2128,6 +2180,7 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
             }
             return;
         }
+#endif
         // Mouse interface has no output reports
         return;
     }

@@ -70,8 +70,10 @@
 // ============================================================================
 // ROUTING CONFIGURATION
 // ============================================================================
-#define ROUTING_MODE    ROUTING_MODE_MERGE
-#define MERGE_MODE      MERGE_ALL
+// SIMPLE mode: each physical Wii port is a distinct player slot.
+// USB gets P1→slot0 and P2→slot1; BLE is capped to slot0 only via
+// max_players_per_output in app.c.
+#define ROUTING_MODE    ROUTING_MODE_SIMPLE
 
 // ============================================================================
 // PLAYER MANAGEMENT

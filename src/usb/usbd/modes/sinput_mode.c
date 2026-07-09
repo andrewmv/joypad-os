@@ -295,8 +295,6 @@ static bool sinput_mode_send_report(uint8_t player_index,
                                      const profile_output_t* profile_out,
                                      uint32_t buttons)
 {
-    (void)player_index;
-
     // Relative pointers (e.g. PlayStation Mouse) go out the SInput composite's
     // mouse interface, not the gamepad report.
     if (event->type == INPUT_TYPE_MOUSE) {
@@ -411,8 +409,8 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.plug_status = 0;   // unknown -> SDL/Steam shows no battery
     }
 
-    // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
-    return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
+    // Send report on the player's HID instance (player 0 = P1 gamepad, 1 = P2 gamepad)
+    return tud_hid_n_report(player_index, SINPUT_REPORT_ID_INPUT,
                             ((uint8_t*)&sinput_report) + 1,
                             sizeof(sinput_report) - 1);
 }

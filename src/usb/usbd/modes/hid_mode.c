@@ -91,7 +91,6 @@ static bool hid_mode_send_report(uint8_t player_index,
                                   const profile_output_t* profile_out,
                                   uint32_t buttons)
 {
-    (void)player_index;
     (void)event;
 
     // Convert buttons to HID format (18 buttons across 3 bytes)
@@ -125,7 +124,7 @@ static bool hid_mode_send_report(uint8_t player_index,
     hid_report.pressure_l2         = profile_out->l2_analog;
     hid_report.pressure_r2         = profile_out->r2_analog;
 
-    return tud_hid_report(0, &hid_report, sizeof(hid_report));
+    return tud_hid_n_report(player_index, 0, &hid_report, sizeof(hid_report));
 }
 
 static const uint8_t* hid_mode_get_report_descriptor(void)

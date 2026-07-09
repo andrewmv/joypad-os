@@ -140,15 +140,15 @@ void app_init(void)
     // compete with app_task()'s green/blue/breathing state machine.
     wii_host_set_status_led(false);
 
-    // Configure router: broadcast Wii input to both USB and BLE outputs
+    // Configure router: each Wii port is a distinct player in SIMPLE mode.
+    // USB receives P1→slot0 and P2→slot1; BLE is capped at slot0 so only
+    // P1 is forwarded over wireless (single HOGP peripheral limitation).
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,
-        .merge_mode = MERGE_MODE,
         .max_players_per_output = {
             [OUTPUT_TARGET_USB_DEVICE]     = USB_OUTPUT_PORTS,
-            [OUTPUT_TARGET_BLE_PERIPHERAL] = MAX_PLAYER_SLOTS,
+            [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
         },
-        .merge_all_inputs = false,
         .transform_flags = TRANSFORM_NONE,
     };
     router_init(&router_cfg);
