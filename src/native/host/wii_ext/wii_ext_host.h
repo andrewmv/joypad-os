@@ -56,6 +56,11 @@ void wii_host_init_pins_detected(uint8_t sda, uint8_t scl, uint8_t detect);
 void wii_host_init_dual_detected(uint8_t sda1, uint8_t scl1, uint8_t det1,
                                  uint8_t sda2, uint8_t scl2, uint8_t det2);
 
+// When false, the driver suppresses all LED color writes, letting the app own
+// the status LED entirely. Default true preserves wii2usb/wii2gc behavior where
+// the LED reflects detected controller type.
+void wii_host_set_status_led(bool enabled);
+
 extern const InputInterface wii_input_interface;
 
 #endif // WII_EXT_HOST_H

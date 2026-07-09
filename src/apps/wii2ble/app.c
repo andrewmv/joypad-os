@@ -135,6 +135,10 @@ void app_init(void)
 #else
     wii_host_init_pins_detected(WII_PIN_SDA, WII_PIN_SCL, WII_DETECT_GPIO);
 #endif
+    // This app drives the LED from link state (USB/BLE/advertising) only.
+    // Disable the Wii host driver's controller-type LED writes so they don't
+    // compete with app_task()'s green/blue/breathing state machine.
+    wii_host_set_status_led(false);
 
     // Configure router: broadcast Wii input to both USB and BLE outputs
     router_config_t router_cfg = {
@@ -158,6 +162,11 @@ void app_init(void)
         .auto_assign_on_press = AUTO_ASSIGN_ON_PRESS,
     };
     players_init_with_config(&player_cfg);
+
+    // Status LED shows link state only (USB / BLE / advertising), not controller
+    // presence — so plugging/unplugging a Wii controller never disturbs it.
+    // Controller presence is indicated on the OLED instead.
+    leds_set_ignore_player_count(true);
 
     static const profile_config_t profile_cfg = {
         .output_profiles = { NULL },
