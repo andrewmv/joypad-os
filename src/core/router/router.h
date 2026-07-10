@@ -178,6 +178,12 @@ void router_set_combo_layout(uint8_t index, uint8_t required_layout);
 // Lock-free read, zero-copy (returns pointer to internal state)
 const input_event_t* router_get_output(output_target_t output, uint8_t player_id);
 
+// Non-consuming peek at the latest stored output state. Unlike
+// router_get_output(), this does NOT clear the `updated` flag or consume
+// deltas, and returns the state every call (never NULL just because there was
+// no new event). Use for passive observers that need current held state.
+const input_event_t* router_peek_output(output_target_t output, uint8_t player_id);
+
 // Check if any player has new data (fast scan for multi-player outputs)
 bool router_has_updates(output_target_t output);
 

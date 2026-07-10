@@ -220,6 +220,14 @@ static const uint32_t DISPLAY_BTN_MAP[] = {
     JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4,
     JP_BUTTON_L1, JP_BUTTON_R1, JP_BUTTON_S1, JP_BUTTON_S2,
 };
+// Per-function icon glyph for each indicator (parallel to DISPLAY_BTN_MAP).
+// Chars 1-4 = D-pad arrows, 5 = Select dash, 6 = Start triangle (see display.c).
+static const char DISPLAY_BTN_ICON[] = {
+    1, 2, 3, 4,          // DU DD DL DR  -> arrow glyphs
+    'B','A','Y','X',     // B1 B2 B3 B4  -> face-button letters
+    'L','R',             // L1 R1        -> shoulder letters
+    5, 6,                // S1 S2        -> Select dash / Start triangle
+};
 #define DISPLAY_BTN_COUNT  12
 #define DISPLAY_BTN_SIZE    7   // px (box width and height)
 #define DISPLAY_BTN_STRIDE  9   // px (box + 2px gap)
@@ -242,14 +250,28 @@ static void render_display(void)
         if (!wii_host_port_is_connected(p)) {
             display_text(DISPLAY_BTN_X0, y, "---");
         } else {
+            // Non-consuming peek: the display is a passive observer, so it must
+            // not consume the `updated` flag / deltas (router_get_output would),
+            // and it needs the current held state every frame, not just on the
+            // frame a new event lands. Otherwise held buttons "blink" for one
+            // refresh and revert.
             const input_event_t *ev =
-                router_get_output(OUTPUT_TARGET_USB_DEVICE, p);
+                router_peek_output(OUTPUT_TARGET_USB_DEVICE, p);
             uint32_t btns = ev ? ev->buttons : 0;
             for (int b = 0; b < DISPLAY_BTN_COUNT; b++) {
                 uint8_t bx = DISPLAY_BTN_X0 + b * DISPLAY_BTN_STRIDE;
                 bool pressed = (btns & DISPLAY_BTN_MAP[b]) != 0;
-                if (pressed) display_fill_rect(bx, y, DISPLAY_BTN_SIZE, DISPLAY_BTN_SIZE, true);
-                else         display_rect(bx, y, DISPLAY_BTN_SIZE, DISPLAY_BTN_SIZE);
+                char ico[2] = { DISPLAY_BTN_ICON[b], 0 };
+                if (pressed) {
+                    // Held: filled highlight box with the icon knocked out.
+                    // Box shifted 1px left so it centers on the 6px glyph (which
+                    // stays at bx in both states, avoiding a jump on press).
+                    display_fill_rect(bx - 1, y, 7, 8, true);
+                    display_text_ex(bx, y, ico, true);
+                } else {
+                    // Released: plain icon (row doubles as an always-visible legend).
+                    display_text(bx, y, ico);
+                }
             }
         }
     }

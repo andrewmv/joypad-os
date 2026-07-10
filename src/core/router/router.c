@@ -1277,6 +1277,17 @@ const input_event_t* __not_in_flash_func(router_get_output)(output_target_t outp
     return NULL;
 }
 
+const input_event_t* __not_in_flash_func(router_peek_output)(output_target_t output, uint8_t player_id) {
+    if (output >= MAX_OUTPUTS || player_id >= MAX_PLAYERS_PER_OUTPUT) {
+        return NULL;
+    }
+
+    // Non-consuming read: return the latest stored state without touching the
+    // `updated` flag or clearing deltas. For passive observers (e.g. the OLED
+    // status display) that need current held-button state rather than events.
+    return &router_outputs[output][player_id].current_state;
+}
+
 bool router_has_updates(output_target_t output) {
     if (output >= MAX_OUTPUTS) return false;
 

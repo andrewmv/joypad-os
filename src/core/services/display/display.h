@@ -57,6 +57,10 @@ void display_pixel(uint8_t x, uint8_t y, bool on);
 // Draw text at position (using built-in 6x8 font)
 void display_text(uint8_t x, uint8_t y, const char* text);
 
+// Draw text like display_text, but invert each glyph's pixels when invert=true
+// (foreground off / background on) — for knocking an icon out of a filled box.
+void display_text_ex(uint8_t x, uint8_t y, const char* text, bool invert);
+
 // Draw large text (12x16 font, for mode display)
 void display_text_large(uint8_t x, uint8_t y, const char* text);
 

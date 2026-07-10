@@ -41,12 +41,17 @@
 // 6x8 FONT
 // ============================================================================
 
-// Arrow glyphs (chars 1-4: up, down, left, right)
+// Special glyphs (column-major, bit0=top row):
+//   chars 1-4: D-pad arrows (up, down, left, right)
+//   char  5:   Select (centered horizontal dash pill)
+//   char  6:   Start  (right-pointing play triangle)
 static const uint8_t font_arrows[][6] = {
     {0x04,0x02,0x7F,0x02,0x04,0x00}, // char 1: up
     {0x10,0x20,0x7F,0x20,0x10,0x00}, // char 2: down
     {0x08,0x1C,0x2A,0x08,0x08,0x00}, // char 3: left
     {0x08,0x08,0x2A,0x1C,0x08,0x00}, // char 4: right
+    {0x00,0x18,0x18,0x18,0x18,0x00}, // char 5: select (dash)
+    {0x00,0x7E,0x3C,0x18,0x00,0x00}, // char 6: start (play triangle)
 };
 
 static const uint8_t font_6x8[] = {
@@ -627,13 +632,13 @@ void display_bitmap(uint8_t x, uint8_t y, const uint8_t* bitmap, uint8_t w, uint
 // TEXT RENDERING
 // ============================================================================
 
-void display_text(uint8_t x, uint8_t y, const char* text) {
+void display_text_ex(uint8_t x, uint8_t y, const char* text, bool invert) {
     while (*text && x < DISPLAY_WIDTH - 6) {
         char c = *text++;
         const uint8_t* glyph;
 
-        // Check for arrow characters (1-4)
-        if (c >= 1 && c <= 4) {
+        // Check for special glyphs (arrows 1-4, select 5, start 6)
+        if (c >= 1 && c <= 6) {
             glyph = font_arrows[c - 1];
         } else if (c >= 32 && c <= 126) {
             glyph = &font_6x8[(c - 32) * 6];
@@ -644,11 +649,16 @@ void display_text(uint8_t x, uint8_t y, const char* text) {
         for (uint8_t i = 0; i < 6; i++) {
             uint8_t col = glyph[i];
             for (uint8_t j = 0; j < 8; j++) {
-                display_pixel(x + i, y + j, (col >> j) & 1);
+                bool bit = (col >> j) & 1;
+                display_pixel(x + i, y + j, invert ? !bit : bit);
             }
         }
         x += 6;
     }
+}
+
+void display_text(uint8_t x, uint8_t y, const char* text) {
+    display_text_ex(x, y, text, false);
 }
 
 void display_text_large(uint8_t x, uint8_t y, const char* text) {
