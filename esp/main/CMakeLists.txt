@@ -598,7 +598,9 @@ elseif(CONFIG_APP STREQUAL "wii2ble")
         BTSTACK_USE_ESP32=1
         ENABLE_BTSTACK=1
         DISABLE_USB_HOST=1
-        USBD_DEFAULT_MODE=1
+        # Default to XInput: hosts (incl. Steam) auto-recognize it as an Xbox 360
+        # pad with the expected mapping out of the box, no per-app config.
+        USBD_DEFAULT_MODE=USB_OUTPUT_MODE_XINPUT
         OLED_I2C_DISPLAY=1
         DISABLE_DISPLAY_SPI=1
         OLED_I2C_BUS=1

@@ -286,8 +286,12 @@ static void render_display(void)
     else                               display_text(26, 26, "Searching...");
 
     // ---- USB status ----
+    // When connected, show the active USB protocol mode (XInput / SInput /
+    // DInput) rather than a generic "Connected" — the mode name implies the
+    // link is up and tells you which protocol the host sees.
     display_text(0, 36, "USB:");
-    display_text(26, 36, tud_mounted() ? "Connected   " : "Disconnected");
+    display_text(26, 36, tud_mounted() ? usbd_get_mode_name(usbd_get_mode())
+                                       : "Disconnected");
 
     // ---- Port presence indicators ----
     display_text(0, 50, "P1");
