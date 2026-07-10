@@ -233,9 +233,46 @@ static const char DISPLAY_BTN_ICON[] = {
 #define DISPLAY_BTN_STRIDE  9   // px (box + 2px gap)
 #define DISPLAY_BTN_X0     14   // px (x position of first button)
 
+// Blank the OLED after this long with no on-screen change (burn-in protection).
+// The LED is driven separately and stays on.
+#define SCREENSAVER_TIMEOUT_MS  (5u * 60u * 1000u)
+
 static void render_display(void)
 {
     if (!display_is_initialized()) return;
+
+    // ---- Screensaver (burn-in protection) ----
+    // Signature of everything the screen shows that can change. If it holds
+    // steady for SCREENSAVER_TIMEOUT_MS, push one all-black frame and stop
+    // updating — an OLED only ages lit pixels, so an all-off panel can't burn
+    // in. Any change (button, connection, presence, mode) wakes it instantly.
+    const input_event_t *pe0 = router_peek_output(OUTPUT_TARGET_USB_DEVICE, 0);
+    const input_event_t *pe1 = router_peek_output(OUTPUT_TARGET_USB_DEVICE, 1);
+    uint32_t sig = (pe0 ? pe0->buttons : 0) ^ ((pe1 ? pe1->buttons : 0) * 2654435761u);
+    sig ^= tud_mounted()                  ? 0x11111111u : 0;
+    sig ^= ble_output_is_connected()      ? 0x22222222u : 0;
+    sig ^= wii_host_port_is_connected(0)  ? 0x44444444u : 0;
+    sig ^= wii_host_port_is_connected(1)  ? 0x88888888u : 0;
+    sig ^= (uint32_t)usbd_get_mode() * 0x9E3779B1u;
+
+    uint32_t now = platform_time_ms();
+    static uint32_t ss_last_change_ms = 0;
+    static uint32_t ss_last_sig = 0;
+    static bool     ss_have_last = false;
+    static bool     ss_blanked = false;
+
+    if (!ss_have_last || sig != ss_last_sig) {
+        ss_have_last = true;
+        ss_last_sig = sig;
+        ss_last_change_ms = now;
+        ss_blanked = false;              // activity → wake
+    }
+    if (!ss_blanked && (now - ss_last_change_ms) >= SCREENSAVER_TIMEOUT_MS) {
+        display_clear();
+        display_update();                // push a single all-black frame
+        ss_blanked = true;
+    }
+    if (ss_blanked) return;              // stay dark until the signature changes
 
     display_clear();
 
